@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.forms import ValidationError
 from django.utils.translation import ugettext_lazy as _ 
 from django.utils import timezone
@@ -123,10 +124,23 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(
         verbose_name=_('active'),
         help_text=_(
-                'Indicates whether this account is active. '
-                'Please use this setting instead of deleting accounts.'
-            ),
+            'Indicates whether this account is active. '
+            'Please use this setting instead of deleting accounts.'
+        ),
         default=True
+    )
+
+    lang = models.CharField(
+        verbose_name=_('Communication language'),
+        help_text=_(
+            'Controls the language of all automatically generated '
+            'communication.' 
+        ),
+        max_length=10,
+        # TODO: can we somehow automatically (and robustly)
+        # extract this from the available locales in gettext?
+        choices=settings.SUPPORTED_LOCALES,
+        default=settings.SUPPORTED_LOCALES[0]
     )
 
     date_joined = models.DateTimeField(_('date joined'), default=timezone.now)

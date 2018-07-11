@@ -39,7 +39,7 @@ class UserAdmin(BaseUserAdmin):
 
     # Fieldsets for changing a user's data
     fieldsets = (
-        (None, {'fields': ('email', 'password')}),
+        (None, {'fields': ('email', 'password', 'lang')}),
         (_('Permissions'), {'fields': ('is_active', 'is_staff','is_superuser',
                                         'groups', 'user_permissions')})
     )
