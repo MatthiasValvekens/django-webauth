@@ -131,7 +131,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     lang = models.CharField(
-        verbose_name=_('Communication language'),
+        verbose_name=_('communication language'),
         help_text=_(
             'Controls the language of all automatically generated '
             'communication.' 
