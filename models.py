@@ -137,10 +137,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             'communication.' 
         ),
         max_length=10,
-        # TODO: can we somehow automatically (and robustly)
-        # extract this from the available locales in gettext?
-        choices=settings.SUPPORTED_LOCALES,
-        default=settings.SUPPORTED_LOCALES[0]
+        choices=settings.LANGUAGES,
+        default=settings.LANGUAGES[0]
     )
 
     date_joined = models.DateTimeField(_('date joined'), default=timezone.now)
