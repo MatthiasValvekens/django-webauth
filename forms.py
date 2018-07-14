@@ -3,11 +3,6 @@ from django.contrib.auth import forms as auth_forms
 from webauth.models import User
 
 class UserCreationForm(forms.ModelForm):
-    """
-    A UserCreationForm without password inputs.
-    Instead, the users' password is set to something unusable.
-    (not suitable for subclassing)
-    """
     class Meta:
         model = User
         fields = ('email',)
