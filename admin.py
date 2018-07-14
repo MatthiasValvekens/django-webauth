@@ -51,3 +51,18 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('email', 'password1', 'password2'),
         }),
     )
+
+    def queryset(self, request):
+        qs = super(UserAdmin, self).queryset(request)
+        # Only superusers can edit superusers
+        if request.user.is_superuser:
+            return qs
+        else:
+            return qs.filter(is_superuser=False)
+
+    def get_readonly_fields(self, request, obj=None):
+        # Staff users cannot touch permissions
+        if request.user.is_superuser:
+            return tuple()
+        else:
+            return ('is_superuser', 'is_staff', 'groups', 'user_permissions')
