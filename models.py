@@ -44,11 +44,14 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
 
         if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
+            raise ValueError(_('Superuser must have is_staff=True.'))
         if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
+            raise ValueError(_('Superuser must have is_superuser=True.'))
+        if extra_fields.get('is_active') is not True:
+            raise ValueError(_('Superuser must have is_active=True.'))
 
         return self._create_user(email, password, **extra_fields)
     
@@ -127,7 +130,9 @@ class User(AbstractBaseUser, PermissionsMixin):
             'Indicates whether this account is active. '
             'Please use this setting instead of deleting accounts.'
         ),
-        default=True
+        # Users start out as inactive, until they click the link
+        # in their sign-up email
+        default=False
     )
 
     lang = models.CharField(

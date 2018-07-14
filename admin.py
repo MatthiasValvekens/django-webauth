@@ -1,30 +1,24 @@
 from django.contrib import admin
-from django.contrib.auth import forms as auth_forms
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import ugettext_lazy as _ 
 
 from webauth.models import User
+from webauth.forms import (
+    UserChangeForm, UserCreationForm, dispatch_activation_email
+)
 
-"""
-We need to reimplement UserCreationForm and UserChangeForm.
-""" 
+ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'registration/activation_email_subject.txt'
+ACTIVATION_EMAIL_TEMPLATE = 'registration/activation_email.html'
 
-class UserCreationForm(auth_forms.UserCreationForm):
-    # The code in django.contrib.auth.forms refers to self._meta,
-    # so changing these values should do the trick
-    class Meta:
-        model = User
-        fields = ("email",)
-        field_classes = {}
+def resend_activation_email(modeladmin, request, qs):
+    for user in qs:
+        dispatch_activation_email(
+            user.email, 
+            request, 
+            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
+            email_template_name=ACTIVATION_EMAIL_TEMPLATE
+        )
 
-
-class UserChangeForm(auth_forms.UserChangeForm):
-    class Meta:
-        model = User
-        fields = '__all__'
-        field_classes = {}
-
-@admin.register(User)
 class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
@@ -33,9 +27,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('email',)
     list_display = ('email', 'is_staff', 'is_superuser')
     list_filter = ('is_staff', 'groups')
-
-    # TODO: sort out how permissions to assign permissions work
-    # is this automatically set up by inheriting from PermissionsMixin?
+    actions = [resend_activation_email]
 
     # Fieldsets for changing a user's data
     fieldsets = (
@@ -48,7 +40,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, { 
             'classes': ('wide', ), 
-            'fields': ('email', 'password1', 'password2'),
+            'fields': ('email',),
         }),
     )
 
@@ -66,3 +58,13 @@ class UserAdmin(BaseUserAdmin):
             return tuple()
         else:
             return ('is_superuser', 'is_staff', 'groups', 'user_permissions')
+
+    def save_model(self, request, obj, form, change, **kwargs):
+        super(UserAdmin, self).save_model(request, obj, form, change)
+        kwargs.setdefault('subject_template_name', 
+            ACTIVATION_EMAIL_SUBJECT_TEMPLATE)
+        kwargs.setdefault('email_template_name',
+            ACTIVATION_EMAIL_TEMPLATE)
+        if not change:
+            # if we are creating a new user, dispatch an activation token.
+            dispatch_activation_email(obj.email, request, **kwargs)
