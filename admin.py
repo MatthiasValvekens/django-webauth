@@ -68,3 +68,32 @@ class UserAdmin(BaseUserAdmin):
         if not change:
             # if we are creating a new user, dispatch an activation token.
             dispatch_activation_email(obj.email, request, **kwargs)
+
+    # The django.contrib.auth.admin.UserAdmin
+    # prohibits adding users without change permission.
+    # Since non-superusers can't edit permissions,
+    # this is not an issue for us, hence the override.
+    def _add_view(self, request, form_url='', extra_context=None):
+        if extra_context is None:
+            extra_context = {} 
+        username_field = self.model._meta.get_field(self.model.USERNAME_FIELD)
+        defaults = {
+            'auto_populated_fields': (),
+            'username_help_text': username_field.help_text,
+        }
+        extra_context.update(defaults)
+        # This is a bit of a hack, but by calling super() with 
+        # BaseUserAdmin, we can skip one level in the MRO
+        # thus avoiding an infinite loop
+        return super(BaseUserAdmin, self).add_view(request, form_url, extra_context)
+
+    def response_add(self, request, obj, post_url_continue=None):
+        # again, here we defer to grandpa's defaults
+        # this prevents BaseUserAdmin from hijacking the save button
+        # and therefore causing PermissionDenied to be thrown when 
+        # add_view is called without has_change_permission.
+        return super(BaseUserAdmin, self).response_add(
+            request, 
+            obj, 
+            post_url_continue
+        )
