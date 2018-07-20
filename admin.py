@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.utils.translation import ugettext_lazy as _ 
+from django.utils.translation import activate, get_language, ugettext_lazy as _ 
 
 from webauth.models import User
 from webauth.forms import (
@@ -40,7 +40,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, { 
             'classes': ('wide', ), 
-            'fields': ('email',),
+            'fields': ('email', 'lang'),
         }),
     )
 
@@ -66,8 +66,11 @@ class UserAdmin(BaseUserAdmin):
         kwargs.setdefault('email_template_name',
             ACTIVATION_EMAIL_TEMPLATE)
         if not change:
+            orig_lang = get_language()
+            activate(obj.lang)
             # if we are creating a new user, dispatch an activation token.
             dispatch_activation_email(obj.email, request, **kwargs)
+            activate(orig_lang)
 
     # The django.contrib.auth.admin.UserAdmin
     # prohibits adding users without change permission.
