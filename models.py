@@ -143,7 +143,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ),
         max_length=10,
         choices=settings.LANGUAGES,
-        default=settings.LANGUAGES[0]
+        default=settings.LANGUAGES[0][0]
     )
 
     date_joined = models.DateTimeField(_('date joined'), default=timezone.now)
