@@ -27,11 +27,12 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('email',)
     list_display = ('email', 'is_staff', 'is_superuser')
     list_filter = ('is_staff', 'groups')
+    readonly_fields = ('legacy_username',)
     actions = [resend_activation_email]
 
     # Fieldsets for changing a user's data
     fieldsets = (
-        (None, {'fields': ('email', 'password', 'lang')}),
+        (None, {'fields': ('email', 'legacy_username', 'password', 'lang')}),
         (_('Permissions'), {'fields': ('is_active', 'is_staff','is_superuser',
                                         'groups', 'user_permissions')})
     )
@@ -55,9 +56,10 @@ class UserAdmin(BaseUserAdmin):
     def get_readonly_fields(self, request, obj=None):
         # Staff users cannot touch permissions
         if request.user.is_superuser:
-            return tuple()
+            return self.readonly_fields
         else:
-            return ('is_superuser', 'is_staff', 'groups', 'user_permissions')
+            return self.readonly_fields \
+                + ('is_superuser', 'is_staff', 'groups', 'user_permissions')
 
     def save_model(self, request, obj, form, change, **kwargs):
         super(UserAdmin, self).save_model(request, obj, form, change)
