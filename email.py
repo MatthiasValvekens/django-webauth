@@ -22,7 +22,7 @@ class EmailDispatcher:
         self.base_context = {} if base_context is None else base_context
     
     def broadcast_mail(self, to_emails, lang=None, extra_context=None, 
-            request=None, attachments=None):
+            attachments=None):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -78,9 +78,9 @@ class EmailDispatcher:
         for email, lang, context in recipient_data:
             context = dict(extra_context).update(context)
             self.send_mail(
-                to_email, 
+                email, 
                 lang=lang,
-                context=context,
+                extra_context=context,
                 **kwargs
             )
 

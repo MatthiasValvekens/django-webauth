@@ -7,13 +7,44 @@ from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin
 )
 from django.contrib.auth.validators import UnicodeUsernameValidator
-from webauth.email import dispatch_email
+from webauth.email import dispatch_email, EmailDispatcher
 
 def no_at_in_uname(name):
     if '@' in name:
         raise ValidationError(
                 _('The character \'@\' is not allowed in usernames')
             ) 
+
+def mass_translated_email(users, subject_template_name, email_template_name, 
+        context=None, user_context_object_name='user', 
+        attachments=None, **kwargs):
+    """
+    Mass-email users. Context can be a one-argument callable, 
+    to which the user will be passed, or a static dict.
+    The context dict passed to the email dispatcher will
+    always include the user object.
+    Other kwargs will be passed to the EmailDispatcher's __init__.
+
+    This method will work with any model with a .lang and .email attribute.
+    """
+
+    def dynamic_data():
+        for user in users:
+            if callable(context):
+                the_context = context(user)
+            else:
+                the_context = {} if context is None else context
+            the_context[user_context_object_name] = user
+            yield user.email, user.lang, the_context
+
+    EmailDispatcher(
+        subject_template_name, email_template_name, **kwargs
+    ).send_dynamic_emails(dynamic_data(), attachments=attachments)
+
+class UserQuerySet(models.QuerySet):
+    
+    def mass_email(self, *args, **kwargs):
+        mass_translated_email(self, *args, **kwargs)
 
 class UserManager(BaseUserManager):
     """
@@ -23,6 +54,9 @@ class UserManager(BaseUserManager):
     """
 
     use_in_migrations = True
+
+    def get_queryset(self):
+        return UserQuerySet(self.model, using=self._db)
 
     def _create_user(self, email, password, **extra_fields):
         """
