@@ -76,11 +76,12 @@ class EmailDispatcher:
         extra_context = kwargs.pop('extra_context', {})
 
         for email, lang, context in recipient_data:
-            context = dict(extra_context).update(context)
+            the_context = dict(extra_context)
+            the_context.update(context)
             self.send_mail(
                 email, 
                 lang=lang,
-                extra_context=context,
+                extra_context=the_context,
                 **kwargs
             )
 

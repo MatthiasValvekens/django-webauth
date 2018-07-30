@@ -4,20 +4,14 @@ from django.utils.translation import activate, get_language, ugettext_lazy as _
 
 from webauth.models import User
 from webauth.forms import (
-    UserChangeForm, UserCreationForm, dispatch_activation_email
+    UserChangeForm, UserCreationForm
 )
 
-ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'registration/activation_email_subject.txt'
-ACTIVATION_EMAIL_TEMPLATE = 'registration/activation_email.html'
 
 def resend_activation_email(modeladmin, request, qs):
-    for user in qs:
-        dispatch_activation_email(
-            user.email, 
-            request, 
-            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
-            email_template_name=ACTIVATION_EMAIL_TEMPLATE
-        )
+    qs.send_activation_email(request)
+
+resend_activation_email.short_description = _('Resend activation email')
 
 class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
@@ -63,16 +57,8 @@ class UserAdmin(BaseUserAdmin):
 
     def save_model(self, request, obj, form, change, **kwargs):
         super(UserAdmin, self).save_model(request, obj, form, change)
-        kwargs.setdefault('subject_template_name', 
-            ACTIVATION_EMAIL_SUBJECT_TEMPLATE)
-        kwargs.setdefault('email_template_name',
-            ACTIVATION_EMAIL_TEMPLATE)
         if not change:
-            orig_lang = get_language()
-            activate(obj.lang)
-            # if we are creating a new user, dispatch an activation token.
-            dispatch_activation_email(obj.email, request, **kwargs)
-            activate(orig_lang)
+            obj.send_activation_email(request)
 
     # The django.contrib.auth.admin.UserAdmin
     # prohibits adding users without change permission.

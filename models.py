@@ -3,6 +3,10 @@ from django.conf import settings
 from django.forms import ValidationError
 from django.utils.translation import ugettext_lazy as _ 
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+from django.contrib.sites.shortcuts import get_current_site
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin
 )
@@ -16,7 +20,7 @@ def no_at_in_uname(name):
             ) 
 
 def mass_translated_email(users, subject_template_name, email_template_name, 
-        context=None, user_context_object_name='user', 
+        context=None, rcpt_context_object_name='user', 
         attachments=None, **kwargs):
     """
     Mass-email users. Context can be a one-argument callable, 
@@ -34,17 +38,39 @@ def mass_translated_email(users, subject_template_name, email_template_name,
                 the_context = context(user)
             else:
                 the_context = {} if context is None else context
-            the_context[user_context_object_name] = user
+            the_context[rcpt_context_object_name] = user
             yield user.email, user.lang, the_context
 
     EmailDispatcher(
         subject_template_name, email_template_name, **kwargs
     ).send_dynamic_emails(dynamic_data(), attachments=attachments)
 
+ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'registration/activation_email_subject.txt'
+ACTIVATION_EMAIL_TEMPLATE = 'registration/activation_email.html'
+
 class UserQuerySet(models.QuerySet):
     
     def mass_email(self, *args, **kwargs):
         mass_translated_email(self, *args, **kwargs)
+
+    def send_activation_email(self, request,
+            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
+            email_template_name=ACTIVATION_EMAIL_TEMPLATE,
+            pwreset_kwargs=None,
+            **kwargs):
+
+        if pwreset_kwargs is None:
+            pwreset_kwargs = {}
+
+        pwreset_kwargs.setdefault('use_https', request.is_secure())
+        pwreset_kwargs['request'] = request
+        context = lambda u: u.get_password_reset_context(**pwreset_kwargs)
+        self.mass_email(
+            subject_template_name, email_template_name,
+            context, **kwargs
+        )
+
+
 
 class UserManager(BaseUserManager):
     """
@@ -188,6 +214,30 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = _('user')
         verbose_name_plural = _('users')
 
+    # Ripped out of PasswordResetForm for use with our dynamic email dispatcher
+    def get_password_reset_context(self, request=None, domain_override=None,
+            token_generator=default_token_generator, use_https=False):
+        """
+        Construct the context necessary to do a password reset for this user.
+        """
+
+        if not domain_override:
+            current_site = get_current_site(request)
+            site_name = current_site.name
+            domain = current_site.domain
+        else:
+            site_name = domain = domain_override
+
+        return {
+            'email': self.email,
+            'domain': domain,
+            'site_name': site_name,
+            'uid': urlsafe_base64_encode(force_bytes(self.pk)).decode(),
+            'user': self,
+            'token': token_generator.make_token(self),
+            'protocol': 'https' if use_https else 'http'
+        }
+
     def clean(self):
         super().clean()
         self.email = self.__class__.objects.normalize_email(self.email)
@@ -200,5 +250,23 @@ class User(AbstractBaseUser, PermissionsMixin):
         dispatch_email(
             subject_template_name, email_template_name,
             self.email, self.lang,
+            **kwargs
+        )
+
+    def send_activation_email(self, request,
+            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
+            email_template_name=ACTIVATION_EMAIL_TEMPLATE,
+            pwreset_kwargs=None,
+            **kwargs):
+
+        if pwreset_kwargs is None:
+            pwreset_kwargs = {}
+
+        pwreset_kwargs.setdefault('use_https', request.is_secure())
+        pwreset_kwargs['request'] = request
+        dispatch_email(
+            subject_template_name, email_template_name,
+            self.email, self.lang, 
+            context=self.get_password_reset_context(**pwreset_kwargs),
             **kwargs
         )
