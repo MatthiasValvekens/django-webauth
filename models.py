@@ -6,8 +6,8 @@ from django.utils import timezone
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin
 )
-from django.core.mail import send_mail
 from django.contrib.auth.validators import UnicodeUsernameValidator
+from webauth.email import dispatch_email
 
 def no_at_in_uname(name):
     if '@' in name:
@@ -158,6 +158,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().clean()
         self.email = self.__class__.objects.normalize_email(self.email)
 
-    def email_user(self, subject, message, from_email=None, **kwargs):
-        """Email this user"""
-        send_mail(subject, message, from_email, [self.email], **kwargs)
+    def send_email(self, subject_template_name, email_template_name, **kwargs):
+        # add user to context, if applicable
+        context = kwargs.pop('context', {})
+        context['user'] = self
+        kwargs['context'] = context
+        dispatch_email(
+            subject_template_name, email_template_name,
+            self.email, self.lang,
+            **kwargs
+        )
