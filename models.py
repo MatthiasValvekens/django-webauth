@@ -214,6 +214,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = _('user')
         verbose_name_plural = _('users')
 
+    @property
+    def username(self):
+        """
+        Some packages assume that users have a username attribute.
+        """
+        return self.email
+
     # Ripped out of PasswordResetForm for use with our dynamic email dispatcher
     def get_password_reset_context(self, request=None, domain_override=None,
             token_generator=default_token_generator, use_https=False):
