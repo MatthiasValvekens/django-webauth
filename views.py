@@ -8,8 +8,6 @@ from django.utils import translation
 
 from webauth.forms import ActivateAccountForm 
 
-#TODO: for completeness, we should add a url dispatcher
-
 class ActivateAccountView(PasswordResetConfirmView):
     form_class = ActivateAccountForm
     success_url = reverse_lazy('account_activated')
