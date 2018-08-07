@@ -7,7 +7,7 @@ from webauth.views import (
 urlpatterns = [
     # override login view
     #  Note: since we want to override the url, not the name,
-    # this needs to go *before* the LoginI18NRedirectView
+    # this needs to go *before* the include(...)
     path('login/', LoginI18NRedirectView.as_view(), name='login'),
     path('', include('django.contrib.auth.urls')),
     path('activate/<uidb64>/<token>/', 
