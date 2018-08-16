@@ -1,6 +1,7 @@
 from django.utils.translation import get_language, activate
 from django.core.mail import EmailMultiAlternatives
 from django.template import loader
+import lukweb.tasks
 
 # inspired by code in PasswordResetForm
 # TODO: add support for BCC and silent failure toggle
@@ -61,7 +62,7 @@ class EmailDispatcher:
         if lang is not None:
             activate(old_lang)
         
-        message.send()
+        lukweb.tasks.send_mail.delay(message)
 
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
