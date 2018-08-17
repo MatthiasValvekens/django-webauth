@@ -1,7 +1,9 @@
 from django.utils.translation import get_language, activate
 from django.core.mail import EmailMultiAlternatives
 from django.template import loader
+from django.conf import settings
 import lukweb.tasks
+
 
 # inspired by code in PasswordResetForm
 # TODO: add support for BCC and silent failure toggle
@@ -11,19 +13,19 @@ class EmailDispatcher:
     plain-text alternatives
     """
 
-    def __init__(self, 
-            subject_template_name, email_template_name,
-            lang=None, from_email=None,
-            html_email_template_name=None, base_context=None):
+    def __init__(self,
+                 subject_template_name, email_template_name,
+                 lang=None, from_email=None,
+                 html_email_template_name=None, base_context=None):
         self.subject_template_name = subject_template_name
         self.email_template_name = email_template_name
         self.lang = lang
         self.from_email = from_email
         self.html_email_template_name = html_email_template_name
         self.base_context = {} if base_context is None else base_context
-    
-    def broadcast_mail(self, to_emails, lang=None, extra_context=None, 
-            attachments=None):
+
+    def broadcast_mail(self, to_emails, lang=None, extra_context=None,
+                       attachments=None):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -31,11 +33,18 @@ class EmailDispatcher:
         """
 
         context = dict(self.base_context)
+
         if extra_context is not None:
             context.update(extra_context)
 
+        # Add the domain and protocol from the settings to the context.
+        # This ensures that mails sent from celery also have a proper domain and protocol in the template
+        # This is set after updating the dict with the extra context, so django request domain and protocol are ignored.
+        context['domain'] = settings.DOMAIN
+        context['protocol'] = settings.PROTOCOL
+
         if lang is None:
-            lang = self.lang 
+            lang = self.lang
 
         if lang is not None:
             old_lang = get_language()
@@ -61,7 +70,7 @@ class EmailDispatcher:
 
         if lang is not None:
             activate(old_lang)
-        
+
         lukweb.tasks.send_mail.delay(message)
 
     def send_mail(self, to_email, **kwargs):
@@ -80,20 +89,20 @@ class EmailDispatcher:
             the_context = dict(extra_context)
             the_context.update(context)
             self.send_mail(
-                email, 
+                email,
                 lang=lang,
                 extra_context=the_context,
                 **kwargs
             )
 
-def dispatch_email(subject_template_name, email_template_name,
-        to_email, lang=None, from_email=None,
-        html_email_template_name=None, **kwargs):
 
+def dispatch_email(subject_template_name, email_template_name,
+                   to_email, lang=None, from_email=None,
+                   html_email_template_name=None, **kwargs):
     dispatcher = EmailDispatcher(
         subject_template_name, email_template_name,
         lang, from_email, html_email_template_name
     )
 
-    context = kwargs.pop('context', {}) 
+    context = kwargs.pop('context', {})
     dispatcher.send_mail(to_email, extra_context=context, **kwargs)
