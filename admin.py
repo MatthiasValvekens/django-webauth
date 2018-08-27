@@ -1,5 +1,7 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.admin import (
+    UserAdmin as BaseUserAdmin, GroupAdmin as BaseGroupAdmin
+)
 from django.utils.translation import activate, get_language, ugettext_lazy as _ 
 
 from webauth.models import User
@@ -39,21 +41,28 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    def queryset(self, request):
-        qs = super(UserAdmin, self).queryset(request)
-        # Only superusers can edit superusers
-        if request.user.is_superuser:
-            return qs
-        else:
-            return qs.filter(is_superuser=False)
+    def has_change_permission(self, request, obj=None):
+        # Only superusers can edit superusers, but we allow them
+        # to be viewed by all staff users with the appropriate
+        # permissions.
+
+        p = super(UserAdmin, self).has_change_permission(request, obj)
+
+        if obj is not None and obj.is_superuser:
+            return p and request.user.is_superuser
+
+        return p
 
     def get_readonly_fields(self, request, obj=None):
-        # Staff users cannot touch permissions
-        if request.user.is_superuser:
-            return self.readonly_fields
-        else:
-            return self.readonly_fields \
-                + ('is_superuser', 'is_staff', 'groups', 'user_permissions')
+        rof = list(super(UserAdmin, self).get_readonly_fields(request, obj))
+        # non-superusers cannot touch permissions
+        if not request.user.is_superuser:
+            rof += ['is_superuser', 'is_staff', 'user_permissions']
+        # TODO: if upstream bug 11154 ever gets fixed, this check
+        # should probably be rewritten
+        if not request.user.has_perm('auth.change_group'):
+            rof.append('groups')
+        return rof
 
     def save_model(self, request, obj, form, change, **kwargs):
         super(UserAdmin, self).save_model(request, obj, form, change)
@@ -76,7 +85,9 @@ class UserAdmin(BaseUserAdmin):
         # This is a bit of a hack, but by calling super() with 
         # BaseUserAdmin, we can skip one level in the MRO
         # thus avoiding an infinite loop
-        return super(BaseUserAdmin, self).add_view(request, form_url, extra_context)
+        return super(BaseUserAdmin, self).add_view(
+            request, form_url, extra_context
+        )
 
     def response_add(self, request, obj, post_url_continue=None):
         # again, here we defer to grandpa's defaults
@@ -88,3 +99,42 @@ class UserAdmin(BaseUserAdmin):
             obj, 
             post_url_continue
         )
+
+
+    def formfield_for_manytomany(self, db_field, request=None, **kwargs):
+        # snatched from groupadmin
+        # don't know why user admin doesn't include this snippet
+        # by default
+        if db_field.name == 'user_permissions':
+            qs = kwargs.get('queryset', db_field.remote_field.model.objects)
+            # Avoid a major performance hit resolving permission names which
+            # triggers a content_type load:
+            kwargs['queryset'] = qs.select_related('content_type')
+
+        return super().formfield_for_manytomany(
+            db_field, request=request, **kwargs
+        )
+
+
+class GroupAdmin(BaseGroupAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return self.readonly_fields
+        else:
+            return self.readonly_fields + ('permissions',)
+
+    # XXX See Django bug 11154 for the reasoning why this is necessary
+    # (the content_type_id points to the base model, which is in 
+    # the auth app, and the default lookup code understandably
+    # checks in webauth)
+    def has_add_permission(self, request, obj=None):
+        return request.user.has_perm('auth.add_group')
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.has_perm('auth.delete_group')
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.has_perm('auth.change_group')
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.has_perm('auth.view_group')

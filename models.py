@@ -8,10 +8,12 @@ from django.utils.http import urlsafe_base64_encode
 from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.models import (
-    BaseUserManager, AbstractBaseUser, PermissionsMixin
+    BaseUserManager, AbstractBaseUser, PermissionsMixin, Group as BaseGroup
 )
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
+
+# TODO: clearly document which permissions are relevant in the admin!
 
 def no_at_in_uname(name):
     if '@' in name:
@@ -277,3 +279,11 @@ class User(AbstractBaseUser, PermissionsMixin):
             context=self.get_password_reset_context(**pwreset_kwargs),
             **kwargs
         )
+
+
+# for future extensibility and admin consistency
+class Group(BaseGroup): 
+    class Meta:
+        proxy = True
+        verbose_name = _('group')
+        verbose_name_plural = _('groups')
