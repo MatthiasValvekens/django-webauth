@@ -3,6 +3,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.template import loader
 from django.conf import settings
 import lukweb.tasks
+from bs4 import BeautifulSoup
 
 
 # inspired by code in PasswordResetForm
@@ -14,7 +15,7 @@ class EmailDispatcher:
     """
 
     def __init__(self,
-                 subject_template_name, email_template_name,
+                 subject_template_name, email_template_name=None,
                  lang=None, from_email=None,
                  html_email_template_name=None, base_context=None):
         self.subject_template_name = subject_template_name
@@ -25,7 +26,7 @@ class EmailDispatcher:
         self.base_context = {} if base_context is None else base_context
 
     def broadcast_mail(self, to_emails, lang=None, extra_context=None,
-                       attachments=None):
+                       attachments=None, in_task=True):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -49,15 +50,20 @@ class EmailDispatcher:
         if lang is not None:
             old_lang = get_language()
             activate(lang)
-
+        html_email = None
+        if self.html_email_template_name is not None:
+            html_email = loader.render_to_string(
+                self.html_email_template_name, context
+            )
         subject = loader.render_to_string(self.subject_template_name, context)
         # remove newlines
         subject = ''.join(subject.splitlines())
-        body = loader.render_to_string(self.email_template_name, context)
+
+        body = loader.render_to_string(self.email_template_name, context) \
+            if self.email_template_name is not None else BeautifulSoup(html_email).get_text()
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails
         )
-
         if self.html_email_template_name is not None:
             html_email = loader.render_to_string(
                 self.html_email_template_name, context
@@ -71,7 +77,10 @@ class EmailDispatcher:
         if lang is not None:
             activate(old_lang)
 
-        lukweb.tasks.send_mail.delay(message)
+        if in_task:
+            lukweb.tasks.send_mail.delay(message)
+        else:
+            message.send(message)
 
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
@@ -82,18 +91,7 @@ class EmailDispatcher:
         recipient in question.
         Entries of recipient_data should be a triple (email, lang, context).
         """
-
-        extra_context = kwargs.pop('extra_context', {})
-
-        for email, lang, context in recipient_data:
-            the_context = dict(extra_context)
-            the_context.update(context)
-            self.send_mail(
-                email,
-                lang=lang,
-                extra_context=the_context,
-                **kwargs
-            )
+        lukweb.tasks.send_dynamic_emails(self, recipient_data, **kwargs)
 
 
 def dispatch_email(subject_template_name, email_template_name,
