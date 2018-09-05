@@ -43,9 +43,10 @@ def mass_translated_email(users, subject_template_name, email_template_name,
             the_context[rcpt_context_object_name] = user
             yield user.email, user.lang, the_context
 
+    # we have to consume the generator, otherwise pickle complains
     EmailDispatcher(
         subject_template_name, email_template_name, **kwargs
-    ).send_dynamic_emails(dynamic_data(), attachments=attachments)
+    ).send_dynamic_emails(list(dynamic_data()), attachments=attachments)
 
 ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'registration/activation_email_subject.txt'
 ACTIVATION_EMAIL_TEMPLATE = 'registration/activation_email.html'
@@ -230,7 +231,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         Construct the context necessary to do a password reset for this user.
         """
 
-        if not domain_override:
+        if request and not domain_override:
             current_site = get_current_site(request)
             site_name = current_site.name
             domain = current_site.domain

@@ -91,7 +91,7 @@ class EmailDispatcher:
         recipient in question.
         Entries of recipient_data should be a triple (email, lang, context).
         """
-        lukweb.tasks.send_dynamic_emails(self, recipient_data, **kwargs)
+        lukweb.tasks.send_dynamic_emails.delay(self, recipient_data, **kwargs)
 
 
 def dispatch_email(subject_template_name, email_template_name,
