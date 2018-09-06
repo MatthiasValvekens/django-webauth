@@ -2,6 +2,7 @@ import re
 
 from django.conf import settings
 from django.utils.translation import get_language
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 
 # inspired by https://stackoverflow.com/questions/19080211/internalization-set-language-redirect-view-how-to-redirect-to-the-same-page
 LANG_REGEXES = {
@@ -20,3 +21,10 @@ def strip_lang(path):
         return path
     else:
         return path[match.end(1):]
+
+# change the salt
+class ActivationTokenGenerator(PasswordResetTokenGenerator):
+    key_salt = "webauth.utils.ActivationTokenGenerator"
+
+class UnlockTokenGenerator(PasswordResetTokenGenerator):
+    key_salt = "webauth.utils.UnlockTokenGenerator"

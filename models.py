@@ -12,8 +12,12 @@ from django.contrib.auth.models import (
 )
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
+from webauth import utils
 
 # TODO: clearly document which permissions are relevant in the admin!
+
+ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
+ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
 
 def no_at_in_uname(name):
     if '@' in name:
@@ -21,7 +25,7 @@ def no_at_in_uname(name):
                 _('The character \'@\' is not allowed in usernames')
             ) 
 
-def mass_translated_email(users, subject_template_name, email_template_name, 
+def mass_translated_email(users, subject_template_name, 
         context=None, rcpt_context_object_name='user', 
         attachments=None, **kwargs):
     """
@@ -45,33 +49,39 @@ def mass_translated_email(users, subject_template_name, email_template_name,
 
     # we have to consume the generator, otherwise pickle complains
     EmailDispatcher(
-        subject_template_name, email_template_name, **kwargs
+        subject_template_name, **kwargs
     ).send_dynamic_emails(list(dynamic_data()), attachments=attachments)
 
-ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'registration/activation_email_subject.txt'
-ACTIVATION_EMAIL_TEMPLATE = 'registration/activation_email.html'
+def send_activation_email(users,
+        subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
+        email_template_name=None,
+        html_email_template_name=ACTIVATION_EMAIL_TEMPLATE,
+        token_generator=None,
+        **kwargs):
+
+    if token_generator is None:
+        token_generator=utils.ActivationTokenGenerator()
+
+    context = lambda u: u.get_password_reset_context(
+        token_generator=token_generator
+    )
+
+    mass_translated_email(
+        users,
+        subject_template_name, 
+        email_template_name=email_template_name,
+        html_email_template_name=html_email_template_name,
+        context=context, **kwargs
+    )
 
 class UserQuerySet(models.QuerySet):
     
+    # wrappers around the functions defined above
     def mass_email(self, *args, **kwargs):
         mass_translated_email(self, *args, **kwargs)
 
-    def send_activation_email(self, request,
-            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
-            email_template_name=ACTIVATION_EMAIL_TEMPLATE,
-            pwreset_kwargs=None,
-            **kwargs):
-
-        if pwreset_kwargs is None:
-            pwreset_kwargs = {}
-
-        pwreset_kwargs.setdefault('use_https', request.is_secure())
-        pwreset_kwargs['request'] = request
-        context = lambda u: u.get_password_reset_context(**pwreset_kwargs)
-        self.mass_email(
-            subject_template_name, email_template_name,
-            context, **kwargs
-        )
+    def send_activation_email(self, *args, **kwargs):
+        send_activation_email(self, *args, **kwargs)
 
 
 
@@ -224,28 +234,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         """
         return self.email
 
-    # Ripped out of PasswordResetForm for use with our dynamic email dispatcher
-    def get_password_reset_context(self, request=None, domain_override=None,
-            token_generator=default_token_generator, use_https=False):
+    def get_password_reset_context(self, token_generator=default_token_generator):
         """
         Construct the context necessary to do a password reset for this user.
         """
 
-        if request and not domain_override:
-            current_site = get_current_site(request)
-            site_name = current_site.name
-            domain = current_site.domain
-        else:
-            site_name = domain = domain_override
-
         return {
             'email': self.email,
-            'domain': domain,
-            'site_name': site_name,
             'uid': urlsafe_base64_encode(force_bytes(self.pk)).decode(),
             'user': self,
             'token': token_generator.make_token(self),
-            'protocol': 'https' if use_https else 'http'
         }
 
     def clean(self):
@@ -263,29 +261,9 @@ class User(AbstractBaseUser, PermissionsMixin):
             **kwargs
         )
 
-    def send_activation_email(self, request,
-            subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
-            email_template_name=ACTIVATION_EMAIL_TEMPLATE,
-            pwreset_kwargs=None, email=None,
-            **kwargs):
+    def send_activation_email(self, *args, **kwargs):
+        send_activation_email([self], *args, **kwargs)
 
-        if pwreset_kwargs is None:
-            pwreset_kwargs = {}
-
-        pwreset_kwargs.setdefault('use_https', request.is_secure())
-        pwreset_kwargs['request'] = request
-
-        # allow caller to override the email address
-        # (e.g. for the email reset function)
-        if email is None:
-            email = self.email
-
-        dispatch_email(
-            subject_template_name, email_template_name,
-            email, self.lang, 
-            context=self.get_password_reset_context(**pwreset_kwargs),
-            **kwargs
-        )
 
 
 # for future extensibility and admin consistency

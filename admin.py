@@ -11,7 +11,7 @@ from webauth.forms import (
 
 
 def resend_activation_email(modeladmin, request, qs):
-    qs.send_activation_email(request)
+    qs.send_activation_email()
 
 resend_activation_email.short_description = _('Resend activation email')
 
@@ -67,7 +67,7 @@ class UserAdmin(BaseUserAdmin):
     def save_model(self, request, obj, form, change, **kwargs):
         super(UserAdmin, self).save_model(request, obj, form, change)
         if not change:
-            obj.send_activation_email(request)
+            obj.send_activation_email()
 
     # The django.contrib.auth.admin.UserAdmin
     # prohibits adding users without change permission.

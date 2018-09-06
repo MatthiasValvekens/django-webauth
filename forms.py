@@ -35,7 +35,6 @@ class EmailResetForm(forms.ModelForm):
 
     def __init__(self, request, *args, **kwargs):
         self.user = request.user
-        self.request = request
         super(EmailResetForm, self).__init__(*args, **kwargs)
 
     def save(self, commit=True):
@@ -54,7 +53,6 @@ class EmailResetForm(forms.ModelForm):
             # we cannot do this before saving the user, since 
             # the address change would invalidate the activation token
             self.user.send_activation_email(
-                self.request,
                 email=old_email
             )
 

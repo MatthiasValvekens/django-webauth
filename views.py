@@ -10,19 +10,21 @@ from django.utils import translation
 from django.shortcuts import render, redirect
 
 from webauth.forms import ActivateAccountForm, EmailResetForm
-from webauth.utils import strip_lang
+from webauth import utils
+
 
 class LoginI18NRedirectView(LoginView):
 
     def get_redirect_url(self):
         url = super(LoginI18NRedirectView, self).get_redirect_url()
-        return strip_lang(url)
+        return utils.strip_lang(url)
 
 class ActivateAccountView(PasswordResetConfirmView):
     form_class = ActivateAccountForm
     success_url = reverse_lazy('account_activated')
     template_name = 'registration/activate_account.html'
     title = _('Enter password')
+    token_generator = utils.ActivationTokenGenerator()
 
 class AccountActivatedView(PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
@@ -44,8 +46,6 @@ def email_reset_view(request):
             return redirect(reverse_lazy('index'))
         return render(request, 'registration/email_reset_done.html')
         
-        
-
 def set_language(request):
     response = i18n.set_language(request)
     user = request.user
