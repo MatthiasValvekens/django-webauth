@@ -1,6 +1,7 @@
 from django.urls import include, path
 from webauth.views import (
-    ActivateAccountView, AccountActivatedView, LoginI18NRedirectView
+    ActivateAccountView, AccountActivatedView, LoginI18NRedirectView,
+    email_reset_view
 )
 
 
@@ -14,4 +15,5 @@ urlpatterns = [
         ActivateAccountView.as_view(), name='activate_account'),
     path('activate/done/', 
         AccountActivatedView.as_view(), name='account_activated'),
+    path('reset_email/', email_reset_view, name='reset_email')
 ]

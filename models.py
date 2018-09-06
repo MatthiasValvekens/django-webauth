@@ -266,7 +266,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def send_activation_email(self, request,
             subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
             email_template_name=ACTIVATION_EMAIL_TEMPLATE,
-            pwreset_kwargs=None,
+            pwreset_kwargs=None, email=None,
             **kwargs):
 
         if pwreset_kwargs is None:
@@ -274,9 +274,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         pwreset_kwargs.setdefault('use_https', request.is_secure())
         pwreset_kwargs['request'] = request
+
+        # allow caller to override the email address
+        # (e.g. for the email reset function)
+        if email is None:
+            email = self.email
+
         dispatch_email(
             subject_template_name, email_template_name,
-            self.email, self.lang, 
+            email, self.lang, 
             context=self.get_password_reset_context(**pwreset_kwargs),
             **kwargs
         )

@@ -3,10 +3,13 @@ from django.contrib.auth.views import (
     PasswordResetConfirmView, PasswordResetCompleteView, LoginView
 )
 from django.utils.translation import ugettext_lazy as _ 
+from django.core.exceptions import SuspiciousOperation
+from django.http import JsonResponse, HttpResponse
 from django.views import i18n
 from django.utils import translation
+from django.shortcuts import render, redirect
 
-from webauth.forms import ActivateAccountForm 
+from webauth.forms import ActivateAccountForm, EmailResetForm
 from webauth.utils import strip_lang
 
 class LoginI18NRedirectView(LoginView):
@@ -24,6 +27,24 @@ class ActivateAccountView(PasswordResetConfirmView):
 class AccountActivatedView(PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
     title = _('Account activated')
+
+def email_reset_view(request):
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            raise SuspiciousOperation()
+        form = EmailResetForm(request, request.POST)
+        if form.is_valid():
+            form.save()
+            return HttpResponse()
+        else: 
+            return JsonResponse(form.errors, status=400)
+    else:
+        # this page should never be accessed by a non-anon user
+        if request.user.is_authenticated:
+            return redirect(reverse_lazy('index'))
+        return render(request, 'registration/email_reset_done.html')
+        
+        
 
 def set_language(request):
     response = i18n.set_language(request)
