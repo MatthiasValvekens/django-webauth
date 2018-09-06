@@ -5,12 +5,14 @@ from django.contrib.auth.views import (
 from django.utils.translation import ugettext_lazy as _ 
 from django.core.exceptions import SuspiciousOperation
 from django.http import JsonResponse, HttpResponse
+from django.utils.http import urlsafe_base64_decode
 from django.views import i18n
 from django.utils import translation
 from django.shortcuts import render, redirect
 
 from webauth.forms import ActivateAccountForm, EmailResetForm
 from webauth import utils
+from webauth.models import User
 
 
 class LoginI18NRedirectView(LoginView):
@@ -29,6 +31,26 @@ class ActivateAccountView(PasswordResetConfirmView):
 class AccountActivatedView(PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
     title = _('Account activated')
+
+def unlock_account_view(request, uidb64, token):
+    validlink = False
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, 
+            User.DoesNotExist, ValidationError):
+        raise SuspiciousOperation()
+
+    tg = utils.UnlockTokenGenerator()
+    if tg.check_token(user, token):
+        user.is_active = True
+        user.save()
+        validlink = True
+    return render(request, 
+        'registration/unlock_account.html', 
+        context={ 'validlink': validlink }
+    )
+
 
 def email_reset_view(request):
     if request.method == 'POST':

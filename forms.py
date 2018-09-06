@@ -38,22 +38,18 @@ class EmailResetForm(forms.ModelForm):
         super(EmailResetForm, self).__init__(*args, **kwargs)
 
     def save(self, commit=True):
-        # TODO: use a different email template here to make it clear
-        # that this is a re-activation email, and have a toggle somewhere
-        # that doesn't force the user to reset their password
         old_email = self.user.email
         self.user.email = User.objects.normalize_email(
             self.cleaned_data['email']
         )
-        # this should also force a logout, but
-        # TODO kill all sessions to make sure
+        # TODO kill all sessions
+        # otherwise they will simply reactivate as soon as
+        # the acct is unlocked
         self.user.is_active = False
         if commit:
             self.user.save() 
             # we cannot do this before saving the user, since 
             # the address change would invalidate the activation token
-            self.user.send_activation_email(
-                email=old_email
-            )
+            self.user.send_unlock_email(target_email=old_email)
 
         return self.user

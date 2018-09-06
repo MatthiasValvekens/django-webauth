@@ -18,6 +18,8 @@ from webauth import utils
 
 ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
 ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
+UNLOCK_EMAIL_SUBJECT_TEMPLATE = 'mail/unlock_email_subject.txt'
+UNLOCK_EMAIL_TEMPLATE = 'mail/unlock_email.html'
 
 def no_at_in_uname(name):
     if '@' in name:
@@ -261,10 +263,35 @@ class User(AbstractBaseUser, PermissionsMixin):
             **kwargs
         )
 
-    def send_activation_email(self, *args, **kwargs):
+    def send_activation_email(self, *args, email=None, **kwargs):
+        
         send_activation_email([self], *args, **kwargs)
 
+    def send_unlock_email(self, target_email=None,
+            subject_template_name=UNLOCK_EMAIL_SUBJECT_TEMPLATE,
+            email_template_name=None,
+            html_email_template_name=UNLOCK_EMAIL_TEMPLATE,
+            token_generator=None,
+            **kwargs):
 
+        # the email reset function needs this to be customisable
+        if target_email is None:
+            target_email = self.email
+
+        if token_generator is None:
+            token_generator = utils.UnlockTokenGenerator()
+
+        context = self.get_password_reset_context(
+            token_generator=token_generator
+        )
+
+        EmailDispatcher(
+            subject_template_name, base_context=context, 
+            lang=self.lang,
+            email_template_name=email_template_name,
+            html_email_template_name=html_email_template_name,
+            **kwargs
+        ).send_mail(target_email)
 
 # for future extensibility and admin consistency
 class Group(BaseGroup): 

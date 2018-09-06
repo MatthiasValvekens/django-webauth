@@ -22,9 +22,14 @@ def strip_lang(path):
     else:
         return path[match.end(1):]
 
-# change the salt
+# change the salt and account for active status
 class ActivationTokenGenerator(PasswordResetTokenGenerator):
     key_salt = "webauth.utils.ActivationTokenGenerator"
 
-class UnlockTokenGenerator(PasswordResetTokenGenerator):
+    def _make_hash_value(self, user, timestamp):
+        v = super(ActivationTokenGenerator, self)\
+                ._make_hash_value(user, timestamp)
+        return v + str(user.is_active)
+
+class UnlockTokenGenerator(ActivationTokenGenerator):
     key_salt = "webauth.utils.UnlockTokenGenerator"
