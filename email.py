@@ -60,7 +60,7 @@ class EmailDispatcher:
         subject = ''.join(subject.splitlines())
 
         body = loader.render_to_string(self.email_template_name, context) \
-            if self.email_template_name is not None else BeautifulSoup(html_email).get_text()
+            if self.email_template_name is not None else BeautifulSoup(html_email, features="html.parser").get_text()
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails
         )
