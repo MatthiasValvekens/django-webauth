@@ -173,16 +173,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         editable=False,
         null=True
     )
-
-    migrating = models.BooleanField(
-        verbose_name=_('partially migrated'),
-        help_text=_(
-            'Flag indicating whether account '
-            'is currently in the process of being '
-            'migrated from the old site.'
-        ),
-        default=False
-    )
     
     is_staff = models.BooleanField(
         verbose_name=_('staff'),
