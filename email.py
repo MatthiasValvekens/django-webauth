@@ -64,10 +64,7 @@ class EmailDispatcher:
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails
         )
-        if self.html_email_template_name is not None:
-            html_email = loader.render_to_string(
-                self.html_email_template_name, context
-            )
+        if html_email is not None:
             message.attach_alternative(html_email, 'text/html')
 
         if attachments:
