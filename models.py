@@ -242,19 +242,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().clean()
         self.email = self.__class__.objects.normalize_email(self.email)
 
-    def send_email(self, subject_template_name, email_template_name, **kwargs):
+    def send_email(self, subject_template_name, 
+            email_template_name=None, html_email_template_name=None, **kwargs):
         # add user to context, if applicable
         context = kwargs.pop('context', {})
         context['user'] = self
         kwargs['context'] = context
         dispatch_email(
-            subject_template_name, email_template_name,
-            self.email, self.lang,
+            subject_template_name, email_template_name=email_template_name,
+            html_email_template_name=html_email_template_name,
+            to_email=self.email, lang=self.lang,
             **kwargs
         )
 
-    def send_activation_email(self, *args, email=None, **kwargs):
-        
+    def send_activation_email(self, *args, email=None, **kwargs): 
         send_activation_email([self], *args, **kwargs)
 
     def send_unlock_email(self, target_email=None,
