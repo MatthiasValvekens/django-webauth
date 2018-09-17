@@ -1,7 +1,9 @@
 from django.urls import reverse_lazy
+from functools import partial
 from django.contrib.auth.views import (
     PasswordResetConfirmView, PasswordResetCompleteView, LoginView
 )
+from django.contrib.auth import BACKEND_SESSION_KEY
 from django.utils.translation import ugettext_lazy as _ 
 from django.core.exceptions import SuspiciousOperation
 from django.http import JsonResponse, HttpResponse
@@ -13,13 +15,49 @@ from django.shortcuts import render, redirect
 from webauth.forms import ActivateAccountForm, EmailResetForm
 from webauth import utils
 from webauth.models import User
-
-
+# TODO: make this dependency optional
+#from django_otp.forms import OTPAuthenticationForm, OTPTokenForm
+from django_otp import forms as otp_forms
+ 
 class LoginI18NRedirectView(LoginView):
 
     def get_redirect_url(self):
         url = super(LoginI18NRedirectView, self).get_redirect_url()
         return utils.strip_lang(url)
+
+otp_labels = {
+    'otp_token': _('OTP token'),
+    'otp_device': _('OTP device'),
+    'otp_challenge': _('OTP challenge')
+}
+
+class OTPAuthenticationForm(otp_forms.OTPAuthenticationForm):
+    def __init__(self, *args, **kwargs):
+        super(OTPAuthenticationForm, self).__init__(*args, **kwargs)
+        for k, v in otp_labels.items():
+            self.fields[k].label = v
+
+class OTPTokenForm(otp_forms.OTPTokenForm):
+    def __init__(self, *args, **kwargs):
+        super(OTPTokenForm, self).__init__(*args, **kwargs)
+        for k, v in otp_labels.items():
+            self.fields[k].label = v
+
+class OTPLoginView(LoginI18NRedirectView):
+    """
+    Copy of django_otp login to counteract backwards-incompatible
+    code moves in Django 2.x's contrib.auth.
+    """
+    template_name = 'registration/otp_login.html'
+    
+    def get_form_class(self):
+        user = self.request.user
+        if user.is_anonymous or user.is_verified():
+            return OTPAuthenticationForm
+        else:
+            # A minor hack to make django.contrib.auth.login happy
+            user.backend = self.request.session[BACKEND_SESSION_KEY] 
+            return partial(OTPTokenForm, user) 
 
 class ActivateAccountView(PasswordResetConfirmView):
     form_class = ActivateAccountForm
