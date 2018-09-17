@@ -1,4 +1,7 @@
 import re
+from urllib.parse import urlparse, urlunparse
+from django.shortcuts import resolve_url
+from django.http import QueryDict
 
 from django.conf import settings
 from django.utils.translation import get_language
@@ -33,3 +36,14 @@ class ActivationTokenGenerator(PasswordResetTokenGenerator):
 
 class UnlockTokenGenerator(ActivationTokenGenerator):
     key_salt = "webauth.utils.UnlockTokenGenerator"
+
+def login_redirect_url(target, otp=False):
+    # stolen from Django's own redirect_to_login code
+    resolved_url = resolve_url(
+        settings.OTP_LOGIN_URL if otp else settings.LOGIN_URL
+    ) 
+    login_url_parts = list(urlparse(resolved_url))
+    querystring = QueryDict(login_url_parts[4], mutable=True)
+    querystring['next'] = target
+    login_url_parts[4] = querystring.urlencode(safe='/')
+    return urlunparse(login_url_parts)

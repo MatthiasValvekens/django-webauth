@@ -1,14 +1,11 @@
-from urllib.parse import urlparse, urlunparse
 from django import template
 from django.conf import settings
 from django.utils.translation import ugettext as _
 from django.template.base import (
     Node, TemplateSyntaxError, FilterExpression, kwarg_re
 )
-from django.shortcuts import resolve_url
-from django.http import QueryDict
 
-from webauth.utils import strip_lang as _strip_lang
+from webauth.utils import strip_lang as _strip_lang, login_redirect_url
 
 register = template.Library()
 
@@ -57,11 +54,13 @@ LINK_TEMPLATE_WITHOUT_CLASS = (
 )
 
 class OtpRequiredNode(Node):
-    def __init__(self, nodelist, link_class=None, span_class=None, link_text=None):
+    def __init__(self, nodelist, 
+            link_class=None, span_class=None, link_text=None, exempt=None):
         self.nodelist = nodelist
         self.link_class = link_class
         self.span_class = span_class
         self.link_text = link_text
+        self.exempt = exempt
 
     def render(self, context):
         try:
@@ -69,7 +68,11 @@ class OtpRequiredNode(Node):
         except KeyError:
             return ''
 
-        if request.user.is_verified():
+        exempted = self.exempt and (
+            request.user == self.exempt.resolve(context)
+        )
+
+        if request.user.is_verified() or exempted:
             return self.nodelist.render(context)
         else:
             link_text = (
@@ -85,14 +88,7 @@ class OtpRequiredNode(Node):
             if span_class:
                 link_text = (SPAN_TEMPLATE % span_class) + link_text
 
-            # stolen from Django's own redirect_to_login code
-            resolved_url = resolve_url(settings.OTP_LOGIN_URL) 
-            login_url_parts = list(urlparse(resolved_url))
-            querystring = QueryDict(login_url_parts[4], mutable=True)
-            querystring['next'] = request.get_full_path()
-            login_url_parts[4] = querystring.urlencode(safe='/')
-            url = urlunparse(login_url_parts)
-
+            url = login_redirect_url(request.get_full_path(), otp=True)
             args = { 'url': url, 'link_text': link_text }
             if self.link_class:
                 link_class = self.link_class.resolve(context)

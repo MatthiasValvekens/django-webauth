@@ -18,6 +18,14 @@ from webauth.models import User
 # TODO: make this dependency optional
 #from django_otp.forms import OTPAuthenticationForm, OTPTokenForm
 from django_otp import forms as otp_forms
+
+class OTPRequiredMixin:
+    def dispatch(self, request, *args, **kwargs):
+        if not self.request.user.is_verified():
+            return redirect(
+                utils.login_redirect_url(request.get_full_path(), otp=True)
+            )
+        return super(OtpRequiredMixin, self).dispatch(request, *args, **kwargs)
  
 class LoginI18NRedirectView(LoginView):
 
