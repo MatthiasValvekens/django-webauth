@@ -25,7 +25,7 @@ class OTPRequiredMixin:
             return redirect(
                 utils.login_redirect_url(request.get_full_path(), otp=True)
             )
-        return super(OtpRequiredMixin, self).dispatch(request, *args, **kwargs)
+        return super(OTPRequiredMixin, self).dispatch(request, *args, **kwargs)
  
 class LoginI18NRedirectView(LoginView):
 
