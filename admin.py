@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import (
     UserAdmin as BaseUserAdmin, GroupAdmin as BaseGroupAdmin
 )
@@ -12,6 +12,9 @@ from webauth.forms import (
 
 def resend_activation_email(modeladmin, request, qs):
     qs.send_activation_email()
+    messages.success(
+        request, _('Sent')
+    )
 
 resend_activation_email.short_description = _('Resend activation email')
 
