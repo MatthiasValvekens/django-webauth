@@ -73,7 +73,8 @@ class EmailDispatcher:
 
         if lang is not None:
             activate(old_lang)
-
+        #TODO: remove this once we have proper outbound logging on the mail server
+        print(html_email)
         if in_task:
             lukweb.tasks.send_mail.delay(message)
         else:
