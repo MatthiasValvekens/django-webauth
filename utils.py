@@ -110,7 +110,7 @@ class TimeBasedTokenGenerator:
             return self.VALID_TOKEN, None
 
     def check_token(self, token):
-        response, _ = self.parse_token(token)
+        response, v = self.parse_token(token)
         return response == self.VALID_TOKEN
 
     def timestamp_to_datetime(self, ts):
@@ -133,8 +133,7 @@ class TimeBasedTokenGenerator:
         return self.lifespan
 
     def get_key_salt(self):
-        cls = self.__class__
-        return '%s.%s' % (cls.__module__, cls.__qualname__)
+        return self.__class__.__name__
 
 # change the salt and account for active status
 class ActivationTokenGenerator(PasswordResetTokenGenerator):
