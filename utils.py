@@ -44,9 +44,18 @@ class TimeBasedTokenGenerator:
     
 
     def make_token(self):
+        """
+        Returns a token and the timestamp when it expires.
+        """
         return self._make_token_with_timestamp(
             self.time_elapsed(self.current_time()), self.get_lifespan()
         ) 
+
+    def bare_token(self):
+        """
+        Returns a token without the timestamp when it expires.
+        """
+        return self.make_token()[0]
     
     def extra_hash_data(self):
         return ''
@@ -138,6 +147,33 @@ class ActivationTokenGenerator(PasswordResetTokenGenerator):
 
 class UnlockTokenGenerator(ActivationTokenGenerator):
     key_salt = "webauth.utils.UnlockTokenGenerator"
+
+class PasswordConfirmationTokenGenerator(TimeBasedTokenGenerator):
+
+    def __init__(self, request):
+        self.request = request
+
+    def extra_hash_data(self):
+        user = self.request.user
+        return ''.join([
+            # explicitly include the session key
+            # to mitigate the possibility of replay attacks
+            # TODO: does this actually do anything, and
+            # does it depend on the session engine used?
+            # Probably fairly useless with cookie-backed sessions,
+            # unless they are on a timer.
+            str(self.request.session.session_key),
+            str(user.last_login),
+            str(user.pk),
+            str(user.password),
+        ])
+
+    def get_lifespan(self):
+        # TODO: something like 15 minutes would be more reasonable,
+        # but then we need to override more methods in TBT.
+        # Regardless, the token is session-bound, so it will expire
+        # along with the session.
+        return 1
 
 def login_redirect_url(target, otp=False):
     # stolen from Django's own redirect_to_login code

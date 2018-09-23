@@ -6,11 +6,12 @@ from django.contrib.auth.views import (
 from django.contrib.auth import BACKEND_SESSION_KEY
 from django.utils.translation import ugettext_lazy as _ 
 from django.core.exceptions import SuspiciousOperation
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.utils.http import urlsafe_base64_decode
 from django.views import i18n
 from django.utils import translation
 from django.shortcuts import render, redirect
+from django.contrib.auth.mixins import UserPassesTestMixin
 
 from webauth.forms import ActivateAccountForm, EmailResetForm
 from webauth import utils
@@ -123,3 +124,30 @@ def set_language(request):
         user.lang = request.session[translation.LANGUAGE_SESSION_KEY]
         user.save()
     return response
+
+PASSWORD_CONFIRMED_SESSION_KEY = 'pwconfirmationtoken'
+
+class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
+    template_name = 'registration/confirm_password.html'
+
+    def test_func(self):
+        return self.request.user.is_authenticated
+
+    def form_valid(self, form):
+        """
+        Instead of logging the user in, we generate a 'password confirmed'
+        token and stick it somewhere in the current session.
+        """
+        req = self.request
+        # even from an attacker's point of view, this doesn't make much sense
+        # but checking costs us next to nothing.
+        if form.get_user() != req.user:
+            raise SuspiciousOperation(
+                'PasswordConfirmView POST data does not match '
+                'currently authenticated user.'
+            )
+        gen = utils.PasswordConfirmationTokenGenerator(req)
+        # The token is session-bound, so this makes sense.
+        # also, this avoids leaking the token through the URL
+        req.session[PASSWORD_CONFIRMED_SESSION_KEY] = gen.bare_token()
+        return HttpResponseRedirect(self.get_success_url())
