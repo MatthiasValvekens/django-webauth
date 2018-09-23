@@ -30,7 +30,7 @@ def strip_lang(path):
 class TimeBasedTokenGenerator:
     """
     Inspired by PasswordResetTokenGenerator.
-    Subclasses must provide key_salt and lifespan
+    Subclasses must provide lifespan
     in whatever unit time_elapsed uses (default hours)
     """
     secret = settings.SECRET_KEY
@@ -124,7 +124,8 @@ class TimeBasedTokenGenerator:
         return self.lifespan
 
     def get_key_salt(self):
-        return self.key_salt
+        cls = self.__class__
+        return '%s.%s' % (cls.__module__, cls.__qualname__)
 
 # change the salt and account for active status
 class ActivationTokenGenerator(PasswordResetTokenGenerator):
