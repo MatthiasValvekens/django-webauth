@@ -125,8 +125,6 @@ def set_language(request):
         user.save()
     return response
 
-PASSWORD_CONFIRMED_SESSION_KEY = 'pwconfirmationtoken'
-
 class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
     template_name = 'registration/confirm_password.html'
 
@@ -146,8 +144,5 @@ class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
                 'PasswordConfirmView POST data does not match '
                 'currently authenticated user.'
             )
-        gen = utils.PasswordConfirmationTokenGenerator(req)
-        # The token is session-bound, so this makes sense.
-        # also, this avoids leaking the token through the URL
-        req.session[PASSWORD_CONFIRMED_SESSION_KEY] = gen.bare_token()
+        gen = utils.PasswordConfirmationTokenGenerator(req).embed_token()
         return HttpResponseRedirect(self.get_success_url())

@@ -150,6 +150,8 @@ class UnlockTokenGenerator(ActivationTokenGenerator):
 
 class PasswordConfirmationTokenGenerator(TimeBasedTokenGenerator):
 
+    PASSWORD_CONFIRMED_SESSION_KEY = 'pwconfirmationtoken'
+
     def __init__(self, request):
         self.request = request
 
@@ -174,6 +176,27 @@ class PasswordConfirmationTokenGenerator(TimeBasedTokenGenerator):
         # Regardless, the token is session-bound, so it will expire
         # along with the session.
         return 1
+
+    def embed_token(self):    
+        # The token is session-bound, so this makes sense.
+        # also, this avoids leaking the token through the URL
+        req = self.request
+        req.session[self.PASSWORD_CONFIRMED_SESSION_KEY] = self.bare_token()
+
+    @classmethod
+    def validate_request(cls, request, consume_token=True):
+        if not request.user.is_authenticated:
+            return False
+
+        try:
+            token = request.session[cls.PASSWORD_CONFIRMED_SESSION_KEY]
+        except KeyError:
+            return False
+
+        if consume_token:
+            del request.session[cls.PASSWORD_CONFIRMED_SESSION_KEY]
+
+        return cls(request).check_token(token)
 
 def login_redirect_url(target, otp=False):
     # stolen from Django's own redirect_to_login code
