@@ -2,9 +2,10 @@ from django.utils.translation import get_language, activate
 from django.core.mail import EmailMultiAlternatives
 from django.template import loader
 from django.conf import settings
-import lukweb.tasks
 from bs4 import BeautifulSoup
+import webauth.tasks
 
+# TODO: make celery dependency optional in standalone webauth
 
 # inspired by code in PasswordResetForm
 # TODO: add support for BCC and silent failure toggle
@@ -76,7 +77,7 @@ class EmailDispatcher:
         #TODO: remove this once we have proper outbound logging on the mail server
         print(html_email)
         if in_task:
-            lukweb.tasks.send_mail.delay(message)
+            webauth.tasks.send_mail.delay(message)
         else:
             message.send(message)
 
@@ -89,7 +90,7 @@ class EmailDispatcher:
         recipient in question.
         Entries of recipient_data should be a triple (email, lang, context).
         """
-        lukweb.tasks.send_dynamic_emails.delay(self, recipient_data, **kwargs)
+        webauth.tasks.send_dynamic_emails.delay(self, recipient_data, **kwargs)
 
 
 def dispatch_email(subject_template_name, email_template_name,

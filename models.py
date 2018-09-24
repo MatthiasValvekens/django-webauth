@@ -12,7 +12,7 @@ from django.contrib.auth.models import (
 )
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
-from webauth import utils
+from webauth import tokens
 
 # TODO: clearly document which permissions are relevant in the admin!
 
@@ -62,7 +62,7 @@ def send_activation_email(users,
         **kwargs):
 
     if token_generator is None:
-        token_generator=utils.ActivationTokenGenerator()
+        token_generator=tokens.ActivationTokenGenerator()
 
     context = lambda u: u.get_password_reset_context(
         token_generator=token_generator
@@ -270,7 +270,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             target_email = self.email
 
         if token_generator is None:
-            token_generator = utils.UnlockTokenGenerator()
+            token_generator = tokens.UnlockTokenGenerator()
 
         context = self.get_password_reset_context(
             token_generator=token_generator

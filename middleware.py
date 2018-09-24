@@ -46,7 +46,6 @@ class InactiveTimeoutMiddleware:
                     request.user.otp_device = None
                 # if both timeouts have passed, we need to process both
                 if delta >= timeout:
-                    print('logged out')
                     logout(request)
             except (KeyError, ValueError):
                 pass
