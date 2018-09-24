@@ -10,62 +10,120 @@ from django.conf import settings
 from django.views.generic.detail import SingleObjectMixin
 
 class TokenValidator:
+    """Base class for all token validators."""
+
     VALID_TOKEN = 1
     MALFORMED_TOKEN = 2
     EXPIRED_TOKEN = 3
     
     def parse_token(self, token):
-        # TODO: document this interface, see DBTokenValidator
-        # and TimeBasedTokenGenerator
+        """Parse a token.
+
+        This method should return a tuple containing one of 
+        :const:`TokenValidator.VALID_TOKEN`, 
+        :const:`TokenValidator.MALFORMED_TOKEN` or 
+        :const:`TokenValidator.EXPIRED_TOKEN` and a :class:`datetime.datetime`
+        object specifying the token's expiration timestamp.
+        The expiration time may be ``None`` in all cases.
+
+        :param str token: a token string
+        :returns: the parse result and the token's expiration time.
+        :rtype: int, datetime.datetime
+        """
         raise NotImplementedError(
             'TokenValidator subclasses must implement `parse_token`'
         )
 
     def check_token(self, token):
-        response, v = self.parse_token(token)
-        return response == self.VALID_TOKEN
+        """Check a token.
+
+        This is a thin wrapper around :meth:`parse_token`.  
+        Returns ``True`` if and only if the parse result is 
+        :const:`TokenValidator.VALID_TOKEN`.
+
+        :param str token: a token string
+        :rtype: bool
+        """
+        response, _ = self.parse_token(token)
+        return response == TokenValidator.VALID_TOKEN
 
 class ObjectTokenValidator(TokenValidator):
+    """Token validator that looks up a token as an attribute on an object."""
+
     token_attribute_name = 'token'
+    """
+    Name of the token attribute.
+    """
+
     is_binary_field = True
+    """
+    Controls whether or not the token field is binary.
+    If so, :meth:`str.hex` is called first.
+    """
     
     def get_object(self):
+        """
+        Function called to retrieve the object on which the token lives.
+        Must be implemented by subclasses.
+        """
         raise NotImplementedError(
             'Subclasses of ObjectTokenValidator should implement get_object'
         )
 
     def object_expired(self):
         """
-        If this function returns True, the token will be considered stale.
+        If this function returns ``True``, the token will be considered stale.
         """
         return False
 
     def parse_token(self, token):
+        """
+        Returns :const:`TokenValidator.MALFORMED_TOKEN` if ``token`` does not
+        match the token stored on the object.
+        Otherwise, if :meth:`object_expired` returns ``True``, 
+        :const:`TokenValidator.EXPIRED_TOKEN` is returned.
+        Barring either of these, the method returns 
+        :const:`TokenValidator.VALID_TOKEN`.
+        """
+
         real_token = getattr(self.get_object(), self.token_attribute_name)
         if self.is_binary_field:
             real_token = real_token.hex()
         if token != real_token:
-            return self.MALFORMED_TOKEN, None
+            return TokenValidator.MALFORMED_TOKEN, None
         elif self.object_expired():
-            return self.EXPIRED_TOKEN, None
+            return TokenValidator.EXPIRED_TOKEN, None
         else:
-            return self.VALID_TOKEN, None
+            return TokenValidator.VALID_TOKEN, None
 
 class TimeBasedTokenGenerator:
     """
-    Inspired by PasswordResetTokenGenerator.
-    Subclasses must provide lifespan
-    in whatever unit time_elapsed uses (default hours)
+    Inspired by :class:`django.contrib.auth.tokens.PasswordResetTokenGenerator`.
+    Instances of this class generate tokens that expire after a given time.
+    Ultimately relies on :func:`django.utils.crypto.salted_hmac`.
+
+    The default implementation uses a timespan in hours.
+    This can be changed by overriding :meth:`ts_from_delta` and 
+    :meth:`ts_to_delta`. The default datetime epoch is set to January 1st 2001,
+    which is reasonable for tokens with a lifespan expressed in hours.
+
+    :ivar datetime.datetime origin: the datetime epoch used
+    :ivar str secret: the secret passed to :func:`salted_hmac`.
+    :ivar int lifespan: the token's lifespan (see :meth:`get_lifespan`)
     """
+
     origin = datetime.datetime.combine(
         datetime.date(2001, 1, 1), datetime.datetime.min.time()
     )
 
     secret = settings.SECRET_KEY
 
+    lifespan = 0
+
     def make_token(self):
         """
-        Returns a token and the timestamp when it expires.
+        :returns: a token and the timestamp when it expires.
+        :rtype: str, datetime.datetime
         """
         return self._make_token_with_timestamp(
             self.time_elapsed(self.current_time()), self.get_lifespan()
@@ -73,12 +131,33 @@ class TimeBasedTokenGenerator:
 
     def bare_token(self):
         """
-        Returns a token without the timestamp when it expires.
+        :returns: a token without the timestamp when it expires.
+        :rtype: str
         """
         return self.make_token()[0]
     
     def extra_hash_data(self):
+        """
+        Generate extra hash data to pass to :func:`salted_hmac`.
+        Default is the empty string.
+
+        :rtype: str
+        """
         return ''
+
+    def get_lifespan(self):
+        """
+        :returns: ``self.lifespan`` by default
+        :rtype: int
+        """
+        return self.lifespan
+
+    def get_key_salt(self):
+        """Returns the salt salt passed to :func:`salted_hmac`.
+        The default is ``self.__class__.__name__``.
+        :rtype: str
+        """
+        return self.__class__.__name__
 
     def _make_token_with_timestamp(self, timestamp, lifespan):
         ts_b36 = int_to_base36(timestamp)
@@ -95,34 +174,72 @@ class TimeBasedTokenGenerator:
         else:
             return (token, None)
     
+    def ts_to_delta(self, ts):
+        """
+        Convert an integer timespan indication to a :class:`datetime.timedelta`
+        object.
+        The default implementation assumes the timespan is in hours.
+
+        :param int ts: the timespan indication
+        :rtype: datetime.timedelta
+        """
+        return datetime.timedelta(seconds=ts * 3600)
+
+    def ts_from_delta(self, delta):
+        """
+        Convert a :class:`datetime.timedelta` object to an integer timespan.
+        The default implementation assumes the timespan is in hours.
+
+        :param datetime.timedelta delta: the time delta to convert
+        :rtype: int
+        """
+        return delta.days * 24 + delta.seconds // 3600
+
     def timestamp_to_datetime(self, ts):
         """
-        Convert a timestamp in hours to a datetime object.
-        Can be overridden by subclasses (e.g. to support other units).
+        Convert an integer timespan indication to a :class:`datetime.datetime`
+        object by adding the result of :meth:`ts_to_delta` to ``self.origin``.
+
+        :param int ts: the timespan indication
+        :rtype: datetime.datetime
         """
-        return self.origin + datetime.timedelta(seconds=ts * 3600)
+        return self.origin + self.ts_to_delta(ts)
         
     def time_elapsed(self, dt):
-        delta = dt - self.origin
-        return delta.days * 24 + delta.seconds // 3600
+        """
+        Convert a :class:`datetime.datetime` object to an integer timespan
+        by applying :meth:`ts_from_delta` to the difference of ``dt`` and 
+        ``self.origin``.
+
+        :param datetime.datetime delta: the datetime to convert
+        :rtype: int
+        """
+        return self.ts_from_delta(dt - self.origin)
 
     def current_time(self): 
         return datetime.datetime.now().replace(
             minute=0, second=0, microsecond=0
         )
 
-    def get_lifespan(self):
-        return self.lifespan
-
-    def get_key_salt(self):
-        return self.__class__.__name__
-
 class TimeBasedTokenValidator(TokenValidator):
+    """
+    Validate tokens from a :class:`TimeBasedTokenGenerator`.
+    """
      
     def get_generator(self):
+        """
+        Fetch the generator to obtain tokens from.
+
+        :returns: ``self.generator`` by default
+        :rtype: TimeBasedTokenGenerator
+        """
         return self.generator 
 
     def parse_token(self, token):
+        """
+        Parse a token according to the semantics of 
+        :meth:`TokenValidator.parse_token`.
+        """
         if not token:
             return self.MALFORMED_TOKEN, None
 
@@ -158,6 +275,9 @@ class TimeBasedTokenValidator(TokenValidator):
             return self.VALID_TOKEN, None
 
 class UrlTokenValidator(TokenValidator):
+    """
+    Implement URL token validation boilerplate.
+    """
 
     pass_token = True
     pass_valid_until = False
@@ -167,9 +287,9 @@ class UrlTokenValidator(TokenValidator):
             malformed_token_name=None,
             pass_valid_until=False, pass_token=False, view_instance=None):
         """
-        Decorator that validates the `token` URL parameter.
-        If the token is malformed, the wrapped view raises 404.
-        If the token has expired, a 410 response is returned.
+        Decorator that validates the ``token`` URL parameter.
+        If the token is malformed, the wrapped view raises ``404``.
+        If the token has expired, a ``410`` response is returned.
         If the token is valid, the view is executed normally.
         You can control what extra information is passed to the view via kwargs.
         """
@@ -224,11 +344,12 @@ class UrlTokenValidator(TokenValidator):
         else:
             raise ValueError('Invalid arguments for enforce_token')
     
+    # TODO: put examples from lukweb in docs
     @classmethod
     def as_mixin(cls, *args, **kwargs):
         """
         Returns a view mixin that takes care of token enforcement.
-        All kwargs are passed to the enforce_token decorator, and we 
+        All kwargs are passed to the :dec:`enforce_token` decorator, and we 
         use some voodoo to pass the view instance as well.
         Unless forced otherwise, this also sets the valid_until and 
         token attributes on the view class.
