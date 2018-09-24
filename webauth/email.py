@@ -26,8 +26,8 @@ class EmailDispatcher:
         self.html_email_template_name = html_email_template_name
         self.base_context = {} if base_context is None else base_context
 
-    def broadcast_mail(self, to_emails, lang=None, extra_context=None,
-                       attachments=None, in_task=True):
+    def make_broadcast_mail(self, to_emails, lang=None, extra_context=None,
+                            attachments=None):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -40,8 +40,10 @@ class EmailDispatcher:
             context.update(extra_context)
 
         # Add the domain and protocol from the settings to the context.
-        # This ensures that mails sent from celery also have a proper domain and protocol in the template
-        # This is set after updating the dict with the extra context, so django request domain and protocol are ignored.
+        # This ensures that mails sent from celery also have a proper 
+        # domain and protocol in the template
+        # This is set after updating the dict with the extra context, 
+        # so django request domain and protocol are ignored.
         context['domain'] = settings.DOMAIN
         context['protocol'] = settings.PROTOCOL
 
@@ -60,8 +62,13 @@ class EmailDispatcher:
         # remove newlines
         subject = ''.join(subject.splitlines())
 
-        body = loader.render_to_string(self.email_template_name, context) \
-            if self.email_template_name is not None else BeautifulSoup(html_email, features="html.parser").get_text()
+        if self.email_template_name is not None:
+            body = loader.render_to_string(self.email_template_name, context)
+        else:
+            body = BeautifulSoup(
+                html_email, features="html.parser"
+            ).get_text()
+
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails
         )
@@ -74,8 +81,13 @@ class EmailDispatcher:
 
         if lang is not None:
             activate(old_lang)
-        #TODO: remove this once we have proper outbound logging on the mail server
+        # TODO: remove this once we have proper outbound logging on the mail server
         print(html_email)
+        return message
+
+
+    def broadcast_mail(self, *args, in_task=True, **kwargs):
+        message = self.make_broadcast_mail(*args, **kwargs)
         if in_task:
             webauth.tasks.send_mail.delay(message)
         else:
@@ -90,7 +102,19 @@ class EmailDispatcher:
         recipient in question.
         Entries of recipient_data should be a triple (email, lang, context).
         """
-        webauth.tasks.send_dynamic_emails.delay(self, recipient_data, **kwargs)
+        extra_context = kwargs.pop('extra_context', {})
+
+        def message_list():
+            for email, lang, context in recipient_data:
+                the_context = dict(self.base_context)
+                the_context.update(extra_context)
+                the_context.update(context)
+                yield self.make_broadcast_mail(
+                    [email], lang=lang,
+                    extra_context=the_context,
+                    **kwargs
+                )
+        webauth.tasks.send_mails.delay(list(message_list()))
 
 
 def dispatch_email(subject_template_name, email_template_name,
