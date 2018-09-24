@@ -96,7 +96,7 @@ class EmailDispatcher:
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
 
-    def send_dynamic_emails(self, recipient_data, **kwargs):
+    def send_dynamic_emails(self, recipient_data, in_task=True, **kwargs):
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
@@ -114,8 +114,11 @@ class EmailDispatcher:
                     extra_context=the_context,
                     **kwargs
                 )
-        webauth.tasks.send_mails.delay(list(message_list()))
 
+        if in_task:
+            webauth.tasks.send_mails.delay(list(message_list()))
+        else:
+            webauth.tasks.send_mails(list(message_list()))
 
 def dispatch_email(subject_template_name, email_template_name,
                    to_email, lang=None, from_email=None,
