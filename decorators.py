@@ -8,7 +8,7 @@ from django.shortcuts import resolve_url
 
 from django.contrib.auth.views import redirect_to_login
 
-from webauth.utils import PasswordConfirmationTokenGenerator
+from webauth.tokens import PasswordConfirmationTokenGenerator
 
 def request_passes_test(test_func, login_url=None, 
         redirect_field_name=REDIRECT_FIELD_NAME, raise_exception=True):

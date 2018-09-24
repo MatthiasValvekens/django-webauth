@@ -14,7 +14,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.mixins import UserPassesTestMixin
 
 from webauth.forms import ActivateAccountForm, EmailResetForm
-from webauth import utils
+from webauth import utils, tokens
 from webauth.models import User
 # TODO: make this dependency optional
 #from django_otp.forms import OTPAuthenticationForm, OTPTokenForm
@@ -73,7 +73,7 @@ class ActivateAccountView(PasswordResetConfirmView):
     success_url = reverse_lazy('account_activated')
     template_name = 'registration/activate_account.html'
     title = _('Enter password')
-    token_generator = utils.ActivationTokenGenerator()
+    token_generator = tokens.ActivationTokenGenerator()
 
 class AccountActivatedView(PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
@@ -88,7 +88,7 @@ def unlock_account_view(request, uidb64, token):
             User.DoesNotExist, ValidationError):
         raise SuspiciousOperation()
 
-    tg = utils.UnlockTokenGenerator()
+    tg = tokens.UnlockTokenGenerator()
     if tg.check_token(user, token):
         user.is_active = True
         user.save()
@@ -144,5 +144,5 @@ class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
                 'PasswordConfirmView POST data does not match '
                 'currently authenticated user.'
             )
-        gen = utils.PasswordConfirmationTokenGenerator(req).embed_token()
+        gen = tokens.PasswordConfirmationTokenGenerator(req).embed_token()
         return HttpResponseRedirect(self.get_success_url())
