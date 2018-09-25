@@ -26,12 +26,11 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('email',)
     list_display = ('email', 'is_staff', 'is_superuser')
     list_filter = ('is_staff', 'groups')
-    readonly_fields = ('legacy_username',)
     actions = [resend_activation_email]
 
     # Fieldsets for changing a user's data
     fieldsets = (
-        (None, {'fields': ('email', 'legacy_username', 'password', 'lang')}),
+        (None, {'fields': ('email', 'password', 'lang')}),
         (_('Permissions'), {'fields': ('is_active', 'is_staff','is_superuser',
                                         'groups', 'user_permissions')})
     )

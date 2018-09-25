@@ -21,12 +21,6 @@ ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
 UNLOCK_EMAIL_SUBJECT_TEMPLATE = 'mail/unlock_email_subject.txt'
 UNLOCK_EMAIL_TEMPLATE = 'mail/unlock_email.html'
 
-def no_at_in_uname(name):
-    if '@' in name:
-        raise ValidationError(
-                _('The character \'@\' is not allowed in usernames')
-            ) 
-
 def mass_translated_email(users, subject_template_name, 
         context=None, rcpt_context_object_name='user', 
         attachments=None, **kwargs):
@@ -152,28 +146,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             )
         }
     )
-
-    default_uname_validator = UnicodeUsernameValidator()
-
-    """ 
-    Migration note:
-    This field is explicitly marked as non-editable in forms,
-    to avoid uniqueness conflicts with empty strings in 
-    blankable string fields 
-    """
-    legacy_username = models.CharField(
-        max_length=100,
-        verbose_name=_('legacy username'),
-        help_text=_(
-            'The user\'s username on the '
-            'old website, if applicable'
-        ),
-        validators=[default_uname_validator, no_at_in_uname],
-        unique=True,
-        editable=False,
-        null=True
-    )
-    
+ 
     is_staff = models.BooleanField(
         verbose_name=_('staff'),
         help_text=_(
