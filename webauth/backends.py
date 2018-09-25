@@ -2,17 +2,15 @@ from django.contrib.auth.backends import ModelBackend
 from django.conf import settings
 from webauth.models import User
 
-class EmailOrLegacyUsernameModelBackend(ModelBackend):
+class WebauthBackend(ModelBackend):
     """
-    Log in via email (default) or username (for backwards compatibility)
+    Log in via email and optionally join related models onto request.user.
     """
  
     def authenticate(self, request, username=None, password=None):
         try:
-            if '@' in username: 
-                user = User.objects.get(email=username)
-            else:
-                user = User.objects.get(legacy_username=username)
+            nrm_username = User.objects.normalize_email(username)
+            user = User.objects.get(email=nrm_username)
         except User.DoesNotExist:
             # Run the default password hasher once to reduce the timing
             # difference between an existing and a nonexistent user (#20760).
