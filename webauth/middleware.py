@@ -50,5 +50,11 @@ class InactiveTimeoutMiddleware:
             except (KeyError, ValueError):
                 pass
             finally:
-                request.session[LAST_REQUEST_SESSION_KEY] = now.isoformat()
+                # when the user is no longer logged in, we don't want to
+                # update the timestamp, as it might cause the timeout to
+                # be triggered right after the next login attempt
+                if request.user.is_authenticated:
+                    request.session[LAST_REQUEST_SESSION_KEY] = now.isoformat()
+                else:
+                    del request.session[LAST_REQUEST_SESSION_KEY]
         return self.get_response(request)
