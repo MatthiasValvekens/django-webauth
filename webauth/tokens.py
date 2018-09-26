@@ -5,7 +5,7 @@ from django.http import HttpResponseGone, Http404
 from django.utils.http import base36_to_int, int_to_base36
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.translation import ugettext_lazy as _
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.conf import settings
 from django.views.generic.detail import SingleObjectMixin
 
@@ -268,11 +268,49 @@ class TimeBasedTokenValidator(TokenValidator):
     def get_generator(self):
         """
         Fetch the generator to obtain tokens from.
+        The default implementation requires that either 
+        ``self.generator`` or ``self.generator_class``
+        be defined.
 
-        :returns: ``self.generator`` by default
+        If ``self.generator`` is specified, the value of this 
+        instance attribute is used.
+        If not, this method looks for ``self.generator_class``
+        and attempts to call its :func:`from_view_data` method.
+        Failing that, the no-arguments constructor is called.
+
+        By default, subclasses of :class:`TimeBasedTokenGenerator`
+        make sure that their respective `validator` class attributes
+        come with the right fields to make this work out of the box.
+
         :rtype: TimeBasedTokenGenerator
         """
-        return self.generator 
+        try:
+            return self.generator 
+        except AttributeError:
+            pass
+
+        try:
+            gen_class = self.generator_class
+        except AttributeError:
+            raise TypeError(
+                'Subclasses of TimeBasedTokenValidator must '
+                'supply either a \'generator\' or \'generator_class\' '
+                'instance attribute.'
+            )
+        # attempt to call from_view_data, else no-args constructor
+        try:
+            return gen_class.from_view_data(
+                self.request, self.view_args, self.view_kwargs, 
+                self.view_instance
+            )
+        except AttributeError:
+            try: 
+                return gen_class()
+            except TypeError:
+                raise TypeError(
+                    'No suitable constructor found for generator_class '
+                    'instantiation.'
+                )
 
     def parse_token(self, token):
         """
@@ -313,18 +351,87 @@ class TimeBasedTokenValidator(TokenValidator):
         else:
             return self.VALID_TOKEN, None
 
-class UrlTokenValidator(TokenValidator):
+class RequestTokenValidator(TokenValidator):
     """
-    Implement URL token validation boilerplate.
+    Eliminate boilerplate for token validation in views.
     """
 
     pass_token = True
     pass_valid_until = False
+    redirect_url = None
+    gone_template_name = None
+
+    def get_token(self):
+        """
+        Retrieve the token from request data.
+        """
+        raise NotImplementedError(
+            'Subclasses must implement get_token'
+        )
+
+    def handle_token(self, view_func, pass_token=False, redirect_url=None,
+            pass_valid_until=False, gone_template_name=None):
+        """
+        Return a response based on the token value and view parameters.
+        If a valid token is found, the view is executed with the correct
+        parameters.
+        If either ``redirect_url`` or ``self.redirect_url`` 
+        is not ``None``, the response will be a redirect
+        no matter where the validation fails.
+        These fields may be callables. In this case, they will be called with
+        the view parameters.
+        Otherwise, we return an appropriate error response.
+        """
+        redirect_url = redirect_url or self.redirect_url
+        gone_template_name = gone_template_name or self.gone_template_name
+        # validate the token
+        try:
+            token = self.get_token()
+            parse_res, valid_until = self.parse_token(token)
+        except (KeyError, AttributeError):
+            parse_res = self.MALFORMED_TOKEN
+
+        if parse_res == self.VALID_TOKEN:
+            # decide which arguments to pass through 
+            if pass_valid_until or self.pass_valid_until:
+                self.view_kwargs['valid_until'] = valid_until
+            if pass_token or self.pass_token:
+                self.view_kwargs['token'] = token
+            return view_func(
+                self.request, *self.view_args, **self.view_kwargs
+            )
+        elif redirect_url is not None:
+            if callable(redirect_url):
+                redirect_url = redirect_url(
+                    self.request, *self.view_args, **self.view_kwargs
+                )
+            return redirect(redirect_url)
+        elif parse_res == self.EXPIRED_TOKEN:
+            # Return a 410 response
+            if gone_template_name is None:
+                if valid_until is not None:
+                    response_str = _(
+                        'The token %(token)s expired at '
+                        '%(valid_until)s.'
+                    ) % {
+                        'token': token,
+                        'valid_until': valid_until
+                    }
+                else:
+                    response_str = _(
+                        'The token %(token)s has expired.'
+                    ) % { 'token': token }
+                   
+                return HttpResponseGone(response_str)
+            else:
+                return render(
+                    request, gone_template_name, status=410
+                )
+        else:
+            raise Http404('Malformed token')
 
     @classmethod
-    def enforce_token(cls, view_func=None, gone_template_name=None, 
-            malformed_token_name=None,
-            pass_valid_until=False, pass_token=False, view_instance=None):
+    def enforce_token(cls, view_func=None, view_instance=None, **kwargs):
         """
         Decorator that validates the ``token`` URL parameter.
         If the token is malformed, the wrapped view raises ``404``.
@@ -334,44 +441,16 @@ class UrlTokenValidator(TokenValidator):
         """
         def decorator(view_func):
             @wraps(view_func)
-            def _wrapped_view(request, *args, **kwargs):
-                token = kwargs.get('token')
+            def _wrapped_view(request, *view_args, **view_kwargs):
                 # construct the validator instance
                 validator = cls(
-                    request=request, view_args=args, view_kwargs=kwargs,
+                    request=request, view_args=view_args, 
+                    view_kwargs=view_kwargs,
                     view_instance=view_instance
                 )
-                # validate the token
-                parse_res, valid_until = validator.parse_token(token)
-                if parse_res == cls.VALID_TOKEN:
-                    if pass_valid_until or cls.pass_valid_until:
-                        kwargs['valid_until'] = valid_until
-                    if pass_token or cls.pass_token:
-                        kwargs['token'] = token
-                    return view_func(request, *args, **kwargs)
-                elif parse_res == cls.EXPIRED_TOKEN:
-                    # Return a 410 response
-                    if gone_template_name is None:
-                        if valid_until is not None:
-                            response_str = _(
-                                'The token %(token)s expired at '
-                                '%(valid_until)s.'
-                            ) % {
-                                'token': token,
-                                'valid_until': valid_until
-                            }
-                        else:
-                            response_str = _(
-                                'The token %(token)s has expired.'
-                            ) % { 'token': token }
-                           
-                        return HttpResponseGone(response_str)
-                    else:
-                        return render(
-                            request, gone_template_name, status=410
-                        )
-                else:
-                    raise Http404('Malformed token')
+                return validator.handle_token(
+                    view_func, **kwargs
+                )
             return _wrapped_view
 
         if view_func is None:
@@ -409,7 +488,7 @@ class UrlTokenValidator(TokenValidator):
                     return super(Mixin, self).dispatch(*args, **kwargs)
                 # pass the view instance too
                 wrapped_view = cls.enforce_token(
-                    _dispatch, *args, view_instance=self, **decorator_kwargs
+                    _dispatch, view_instance=self, **decorator_kwargs
                 )
                 return wrapped_view(*args, **kwargs)
 
@@ -423,6 +502,29 @@ class UrlTokenValidator(TokenValidator):
         # only relevant for class-based views
         self.view_instance = view_instance
         super().__init__(**kwargs)
+
+class UrlTokenValidator(RequestTokenValidator):
+
+    def get_token(self): 
+        return self.view_kwargs['token']
+
+class SessionTokenValidator(RequestTokenValidator):
+    def get_token(self): 
+        try:
+            session_key = self.generator_class.session_key
+        except AttributeError:
+            raise TypeError(
+                'Generators using SessionTokenValidator '
+                'must define a session_key attribute.'
+            )
+        token = self.request.session[session_key]
+        # consume the token if necessary
+        try:
+            if self.generator_class.consume_token:
+                del self.request.session[session_key]
+        except AttributeError:
+            pass
+        return token
 
 class DBUrlTokenValidator(UrlTokenValidator):
     """
@@ -446,27 +548,41 @@ class DBUrlTokenValidator(UrlTokenValidator):
             return self.object
 
 class TimeBasedUrlTokenValidator(UrlTokenValidator, TimeBasedTokenValidator):
+    pass
 
-    def get_generator(self):
-        gen_class = self.__class__.generator_class
-        # attempt to call from_view_data, else no-args constructor
-        try:
-            return gen_class.from_view_data(
-                self.request, self.view_args, self.view_kwargs, 
-                self.view_instance
-            )
-        except AttributeError:
-            return gen_class()
+class TimeBasedSessionTokenValidator(SessionTokenValidator, 
+        TimeBasedTokenValidator):
+    pass
+
 
 class TimeBasedUrlTokenGenerator(TimeBasedTokenGenerator,
         validator_base=TimeBasedUrlTokenValidator):
     pass
 
+class TimeBasedSessionTokenGenerator(TimeBasedTokenGenerator,
+        validator_base=TimeBasedSessionTokenValidator):
+
+    consume_token = True
+    
+    @classmethod
+    def from_view_data(cls, request, *args, **kwargs):
+        return cls(request)
+
+    def __init__(self, request):
+        self.request = request
+
+    def embed_token(self):
+        # The token is session-bound, so this makes sense.
+        # also, this avoids leaking the token through the URL
+        req = self.request
+        req.session[self.session_key] = self.bare_token()
+
+
 class TimeBasedDBUrlTokenValidator(DBUrlTokenValidator, TimeBasedTokenValidator):
 
     def get_generator(self):
         # instantiate a generator using the object we have
-        return self.__class__.generator_class(self.get_object())
+        return self.generator_class(self.get_object())
 
 class ObjectDBUrlTokenValidator(DBUrlTokenValidator, ObjectTokenValidator):
     pass
@@ -488,12 +604,9 @@ class ActivationTokenGenerator(PasswordResetTokenGenerator):
 class UnlockTokenGenerator(ActivationTokenGenerator):
     key_salt = "webauth.utils.UnlockTokenGenerator"
 
-class PasswordConfirmationTokenGenerator(TimeBasedTokenGenerator):
+class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
 
-    PASSWORD_CONFIRMED_SESSION_KEY = 'pwconfirmationtoken'
-
-    def __init__(self, request):
-        self.request = request
+    session_key = 'pwconfirmationtoken'
 
     def extra_hash_data(self):
         user = self.request.user
@@ -516,27 +629,3 @@ class PasswordConfirmationTokenGenerator(TimeBasedTokenGenerator):
         # Regardless, the token is session-bound, so it will expire
         # along with the session.
         return 1
-
-    def embed_token(self):    
-        # The token is session-bound, so this makes sense.
-        # also, this avoids leaking the token through the URL
-        req = self.request
-        req.session[self.PASSWORD_CONFIRMED_SESSION_KEY] = self.bare_token()
-
-    @classmethod
-    def validate_request(cls, request, consume_token=True):
-        if not request.user.is_authenticated:
-            return False
-
-        try:
-            token = request.session[cls.PASSWORD_CONFIRMED_SESSION_KEY]
-        except KeyError:
-            return False
-
-        if consume_token:
-            del request.session[cls.PASSWORD_CONFIRMED_SESSION_KEY]
-
-        # instantiate a validator
-        validator = cls.validator()
-        validator.generator = cls(request)
-        return validator.check_token(token)

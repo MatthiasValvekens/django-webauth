@@ -5,6 +5,7 @@ from django.http import QueryDict
 
 from django.conf import settings
 from django.utils.translation import get_language
+from django.contrib.auth import REDIRECT_FIELD_NAME
 
 # inspired by https://stackoverflow.com/questions/19080211/internalization-set-language-redirect-view-how-to-redirect-to-the-same-page
 LANG_REGEXES = {
@@ -24,13 +25,30 @@ def strip_lang(path):
     else:
         return path[match.end(1):]
 
-def login_redirect_url(target, otp=False):
-    # stolen from Django's own redirect_to_login code
-    resolved_url = resolve_url(
-        settings.OTP_LOGIN_URL if otp else settings.LOGIN_URL
-    ) 
+# adapted from Django's own redirect_to_login and user_passes_test code
+def login_redirect_url(target, login_url=None, otp=False, **kwargs):
+    if login_url is None:
+        login_url = settings.OTP_LOGIN_URL if otp else settings.LOGIN_URL
+    resolved_url = resolve_url(login_url) 
     login_url_parts = list(urlparse(resolved_url))
+    return _login_redirect_url(target, login_url_parts, **kwargs)
+
+def build_login_redirect(request, login_url=None, otp=False, **kwargs):
+    if login_url is None:
+        login_url = settings.OTP_LOGIN_URL if otp else settings.LOGIN_URL
+
+    path = request.build_absolute_uri()
+    login_url_parts = list(urlparse(resolve_url(login_url)))
+    login_scheme, login_netloc = login_url_parts[:2]
+    current_scheme, current_netloc = urlparse(path)[:2]
+    if ((not login_scheme or login_scheme == current_scheme) and
+            (not login_netloc or login_netloc == current_netloc)):
+        path = request.get_full_path()
+    return _login_redirect_url(path, login_url_parts, **kwargs)
+
+def _login_redirect_url(target, login_url_parts, 
+        redirect_field_name=REDIRECT_FIELD_NAME): 
     querystring = QueryDict(login_url_parts[4], mutable=True)
-    querystring['next'] = target
+    querystring[REDIRECT_FIELD_NAME] = target
     login_url_parts[4] = querystring.urlencode(safe='/')
     return urlunparse(login_url_parts)
