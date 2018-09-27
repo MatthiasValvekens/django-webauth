@@ -1,24 +1,23 @@
 from django.urls import reverse_lazy
 from functools import partial
 from django.contrib.auth.views import (
-    PasswordResetConfirmView, PasswordResetCompleteView, LoginView
+    PasswordResetConfirmView as BasePasswordResetConfirmView,
+    PasswordResetDoneView, PasswordResetCompleteView, PasswordChangeView, 
+    PasswordChangeDoneView, LoginView, LogoutView
 )
-from django.contrib.auth import BACKEND_SESSION_KEY
+from django.contrib.auth import BACKEND_SESSION_KEY, forms as auth_forms
 from django.utils.translation import ugettext_lazy as _ 
 from django.core.exceptions import SuspiciousOperation
 from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.utils.http import urlsafe_base64_decode
 from django.views import i18n
+from django.views.generic.edit import FormView
 from django.utils import translation
 from django.shortcuts import render, redirect
 from django.contrib.auth.mixins import UserPassesTestMixin
 
-from webauth.forms import ActivateAccountForm, EmailResetForm
-from webauth import utils, tokens
+from webauth import utils, tokens, forms
 from webauth.models import User
-# TODO: make this dependency optional
-#from django_otp.forms import OTPAuthenticationForm, OTPTokenForm
-from django_otp import forms as otp_forms
 
 class OTPRequiredMixin:
     def dispatch(self, request, *args, **kwargs):
@@ -34,24 +33,6 @@ class LoginI18NRedirectView(LoginView):
         url = super(LoginI18NRedirectView, self).get_redirect_url()
         return utils.strip_lang(url)
 
-otp_labels = {
-    'otp_token': _('OTP token'),
-    'otp_device': _('OTP device'),
-    'otp_challenge': _('OTP challenge')
-}
-
-class OTPAuthenticationForm(otp_forms.OTPAuthenticationForm):
-    def __init__(self, *args, **kwargs):
-        super(OTPAuthenticationForm, self).__init__(*args, **kwargs)
-        for k, v in otp_labels.items():
-            self.fields[k].label = v
-
-class OTPTokenForm(otp_forms.OTPTokenForm):
-    def __init__(self, *args, **kwargs):
-        super(OTPTokenForm, self).__init__(*args, **kwargs)
-        for k, v in otp_labels.items():
-            self.fields[k].label = v
-
 class OTPLoginView(LoginI18NRedirectView):
     """
     Copy of django_otp login to counteract backwards-incompatible
@@ -62,18 +43,33 @@ class OTPLoginView(LoginI18NRedirectView):
     def get_form_class(self):
         user = self.request.user
         if user.is_anonymous or user.is_verified():
-            return OTPAuthenticationForm
+            return forms.OTPAuthenticationForm
         else:
             # A minor hack to make django.contrib.auth.login happy
             user.backend = self.request.session[BACKEND_SESSION_KEY] 
-            return partial(OTPTokenForm, user) 
+            return partial(forms.OTPTokenForm, user) 
+
+# TODO subclass PasswordResetView and PasswordResetConfirmView!!!!!
+
+class PasswordResetView(FormView):
+    success_url = reverse_lazy('password_reset_done')
+    template_name = 'registration/password_reset_form.html'
+    form_class = forms.PasswordResetForm
+    email_opts = {}
+
+    def form_valid(self, form):
+        form.save(**self.email_opts)
+        return super().form_valid(form)
+
+class PasswordResetConfirmView(BasePasswordResetConfirmView):
+    token_generator = tokens.PasswordResetTokenGenerator.validator
 
 class ActivateAccountView(PasswordResetConfirmView):
-    form_class = ActivateAccountForm
+    form_class = forms.ActivateAccountForm
     success_url = reverse_lazy('account_activated')
     template_name = 'registration/activate_account.html'
     title = _('Enter password')
-    token_generator = tokens.ActivationTokenGenerator()
+    token_generator = tokens.ActivationTokenGenerator.validator
 
 class AccountActivatedView(PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
@@ -88,7 +84,7 @@ def unlock_account_view(request, uidb64, token):
             User.DoesNotExist, ValidationError):
         raise SuspiciousOperation()
 
-    tg = tokens.UnlockTokenGenerator()
+    tg = tokens.UnlockTokenGenerator.validator
     if tg.check_token(user, token):
         user.is_active = True
         user.save()
@@ -103,7 +99,7 @@ def email_reset_view(request):
     if request.method == 'POST':
         if not request.user.is_authenticated:
             raise SuspiciousOperation()
-        form = EmailResetForm(request, request.POST)
+        form = forms.EmailResetForm(request, request.POST)
         if form.is_valid():
             form.save()
             return HttpResponse()

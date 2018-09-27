@@ -6,7 +6,6 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.contrib.sites.shortcuts import get_current_site
-from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin, Group as BaseGroup
 )
@@ -14,16 +13,9 @@ from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
 from webauth import tokens
 
-# TODO: clearly document which permissions are relevant in the admin!
-
-ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
-ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
-UNLOCK_EMAIL_SUBJECT_TEMPLATE = 'mail/unlock_email_subject.txt'
-UNLOCK_EMAIL_TEMPLATE = 'mail/unlock_email.html'
-
 def mass_translated_email(users, subject_template_name, 
         context=None, rcpt_context_object_name='user', 
-        attachments=None, **kwargs):
+        attachments=None, override_email=None, **kwargs):
     """
     Mass-email users. Context can be a one-argument callable, 
     to which the user will be passed, or a static dict.
@@ -41,26 +33,36 @@ def mass_translated_email(users, subject_template_name,
             else:
                 the_context = {} if context is None else context
             the_context[rcpt_context_object_name] = user
-            yield user.email, user.lang, the_context
+            # necessary for email reset functionality
+            email = override_email or user.email
+            yield email, user.lang, the_context
 
     # we have to consume the generator, otherwise pickle complains
     EmailDispatcher(
         subject_template_name, **kwargs
     ).send_dynamic_emails(list(dynamic_data()), attachments=attachments)
 
-def send_activation_email(users,
-        subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
-        email_template_name=None,
-        html_email_template_name=ACTIVATION_EMAIL_TEMPLATE,
-        token_generator=None,
+ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
+ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
+UNLOCK_EMAIL_SUBJECT_TEMPLATE = 'mail/unlock_email_subject.txt'
+UNLOCK_EMAIL_TEMPLATE = 'mail/unlock_email.html'
+ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
+ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
+PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE = 'mail/password_reset_subject.txt'
+PASSWORD_RESET_EMAIL_TEMPLATE = 'mail/password_reset_email.html'
+
+def dispatch_token_email(users, token_generator, subject_template_name, 
+        email_template_name, html_email_template_name, 
         **kwargs):
 
-    if token_generator is None:
-        token_generator=tokens.ActivationTokenGenerator()
-
-    context = lambda u: u.get_password_reset_context(
-        token_generator=token_generator
-    )
+    def context(user):
+        token, valid_until = token_generator(user).make_token()
+        return {
+            'uid': urlsafe_base64_encode(force_bytes(user.pk)).decode(),
+            'user': user,
+            'token': token,
+            'valid_until': valid_until
+        }
 
     mass_translated_email(
         users,
@@ -68,6 +70,48 @@ def send_activation_email(users,
         email_template_name=email_template_name,
         html_email_template_name=html_email_template_name,
         context=context, **kwargs
+    )
+
+def send_activation_email(users,
+        subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
+        email_template_name=None,
+        html_email_template_name=ACTIVATION_EMAIL_TEMPLATE,
+        token_generator=tokens.ActivationTokenGenerator,
+        **kwargs):
+    dispatch_token_email(
+        users, token_generator=token_generator,
+        subject_template_name=subject_template_name,
+        email_template_name=email_template_name,
+        html_email_template_name=html_email_template_name,
+        **kwargs
+    )
+
+def send_unlock_email(users,
+        subject_template_name=UNLOCK_EMAIL_SUBJECT_TEMPLATE,
+        email_template_name=None,
+        html_email_template_name=UNLOCK_EMAIL_TEMPLATE,
+        token_generator=tokens.UnlockTokenGenerator,
+        **kwargs):
+    dispatch_token_email(
+        users, token_generator=token_generator,
+        subject_template_name=subject_template_name,
+        email_template_name=email_template_name,
+        html_email_template_name=html_email_template_name,
+        **kwargs
+    )
+
+def send_password_reset_email(users,
+        subject_template_name=PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE,
+        email_template_name=None,
+        html_email_template_name=PASSWORD_RESET_EMAIL_TEMPLATE,
+        token_generator=tokens.PasswordResetTokenGenerator,
+        **kwargs):
+    dispatch_token_email(
+        users, token_generator=token_generator,
+        subject_template_name=subject_template_name,
+        email_template_name=email_template_name,
+        html_email_template_name=html_email_template_name,
+        **kwargs
     )
 
 class UserQuerySet(models.QuerySet):
@@ -199,18 +243,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         """
         return self.email
 
-    def get_password_reset_context(self, token_generator=default_token_generator):
-        """
-        Construct the context necessary to do a password reset for this user.
-        """
-
-        return {
-            'email': self.email,
-            'uid': urlsafe_base64_encode(force_bytes(self.pk)).decode(),
-            'user': self,
-            'token': token_generator.make_token(self),
-        }
-
     def clean(self):
         super().clean()
         self.email = self.__class__.objects.normalize_email(self.email)
@@ -228,34 +260,14 @@ class User(AbstractBaseUser, PermissionsMixin):
             **kwargs
         )
 
-    def send_activation_email(self, *args, email=None, **kwargs): 
+    def send_activation_email(self, *args, **kwargs): 
         send_activation_email([self], *args, **kwargs)
 
-    def send_unlock_email(self, target_email=None,
-            subject_template_name=UNLOCK_EMAIL_SUBJECT_TEMPLATE,
-            email_template_name=None,
-            html_email_template_name=UNLOCK_EMAIL_TEMPLATE,
-            token_generator=None,
-            **kwargs):
+    def send_unlock_email(self, *args, **kwargs):
+        send_unlock_email([self], *args, **kwargs)
 
-        # the email reset function needs this to be customisable
-        if target_email is None:
-            target_email = self.email
-
-        if token_generator is None:
-            token_generator = tokens.UnlockTokenGenerator()
-
-        context = self.get_password_reset_context(
-            token_generator=token_generator
-        )
-
-        EmailDispatcher(
-            subject_template_name, base_context=context, 
-            lang=self.lang,
-            email_template_name=email_template_name,
-            html_email_template_name=html_email_template_name,
-            **kwargs
-        ).send_mail(target_email)
+    def send_password_reset_email(self, *args, **kwargs):
+        send_password_reset_email([self], *args, **kwargs)
 
 # for future extensibility and admin consistency
 class Group(BaseGroup): 

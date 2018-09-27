@@ -3,7 +3,6 @@ from functools import wraps
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, Http404
 from django.utils.http import base36_to_int, int_to_base36
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.translation import ugettext_lazy as _
 from django.shortcuts import render, redirect
 from django.conf import settings
@@ -34,8 +33,8 @@ class TokenValidator:
             'TokenValidator subclasses must implement `parse_token`'
         )
 
-    def check_token(self, token):
-        """Check a token.
+    def validate_token(self, token):
+        """Validate a token.
 
         This is a thin wrapper around :meth:`parse_token`.  
         Returns ``True`` if and only if the parse result is 
@@ -152,9 +151,17 @@ class TimeBasedTokenGenerator:
                 # see if we can find a validator somewhere 
                 # in the superclasses because __init_subclass__
                 # kwargs are not inherited
-                for parent in cls.__mro__:
+                for parent in cls.__mro__[1:]:
+                    if issubclass(parent, TimeBasedTokenValidator):
+                        # in this scenario, the generator and validator
+                        # are one and the same, so this makes sense
+                        # as a default.
+                        # We don't even attempt to subclass
+                        cls.validator = cls
+                        return
                     try:
                         validator_base = parent.validator
+                        break
                     except AttributeError:
                         continue
             # if validator_base is still None, we take 
@@ -287,30 +294,7 @@ class TimeBasedTokenValidator(TokenValidator):
         try:
             return self.generator 
         except AttributeError:
-            pass
-
-        try:
-            gen_class = self.generator_class
-        except AttributeError:
-            raise TypeError(
-                'Subclasses of TimeBasedTokenValidator must '
-                'supply either a \'generator\' or \'generator_class\' '
-                'instance attribute.'
-            )
-        # attempt to call from_view_data, else no-args constructor
-        try:
-            return gen_class.from_view_data(
-                self.request, self.view_args, self.view_kwargs, 
-                self.view_instance
-            )
-        except AttributeError:
-            try: 
-                return gen_class()
-            except TypeError:
-                raise TypeError(
-                    'No suitable constructor found for generator_class '
-                    'instantiation.'
-                )
+            return None
 
     def parse_token(self, token):
         """
@@ -360,6 +344,31 @@ class RequestTokenValidator(TokenValidator):
     pass_valid_until = False
     redirect_url = None
     gone_template_name = None
+
+    def get_generator(self):
+        generator = super().get_generator()
+        if generator is not None:
+            return generator
+
+        try:
+            gen_class = self.generator_class
+        except AttributeError:
+            return None
+
+        # attempt to call from_view_data, else no-args constructor
+        try:
+            return gen_class.from_view_data(
+                self.request, self.view_args, self.view_kwargs, 
+                self.view_instance
+            )
+        except AttributeError:
+            try: 
+                return gen_class()
+            except TypeError:
+                raise TypeError(
+                    'No suitable constructor found for generator_class '
+                    'instantiation.'
+                )
 
     def get_token(self):
         """
@@ -591,18 +600,43 @@ class TimeBasedDBUrlTokenGenerator(TimeBasedTokenGenerator,
         validator_base=TimeBasedDBUrlTokenValidator):
     pass
 
-# TODO : derive these from our own token implementations
-# change the salt and account for active status
-class ActivationTokenGenerator(PasswordResetTokenGenerator):
-    key_salt = "webauth.utils.ActivationTokenGenerator"
+class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
+    """
+    Essentially reimplements the functionality of 
+    :class:`django.contrib.auth.tokens.PasswordResetTokenGenerator` in
+    our framework.
+    """
 
-    def _make_hash_value(self, user, timestamp):
-        v = super(ActivationTokenGenerator, self)\
-                ._make_hash_value(user, timestamp)
-        return v + str(user.is_active)
+    def __init__(self, user):
+        self.user = user
+        self.generator = self
 
-class UnlockTokenGenerator(ActivationTokenGenerator):
-    key_salt = "webauth.utils.UnlockTokenGenerator"
+    # for compatibility with Django's pw reset interface
+    @classmethod
+    def check_token(cls, user, token):
+        return cls(user).validate_token(token)
+
+    def extra_hash_data(self):
+        user = self.user
+        login_timestamp = '' if user.last_login is None else (
+            user.last_login.replace(microsecond=0, tzinfo=None)
+        )
+        return ''.join([
+            str(user.pk), user.password, str(login_timestamp), 
+            str(user.is_active)
+        ])
+
+    def get_lifespan(self):
+        return settings.PASSWORD_RESET_TIMEOUT_DAYS * 24
+
+class PasswordResetTokenGenerator(AccountTokenHandler):
+    pass
+
+class UnlockTokenGenerator(AccountTokenHandler):
+    pass
+
+class ActivationTokenGenerator(AccountTokenHandler):
+    pass
 
 class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
 
