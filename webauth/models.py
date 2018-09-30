@@ -9,6 +9,7 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin, Group as BaseGroup
 )
+from django.utils.crypto import salted_hmac
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
 from webauth import tokens
@@ -242,6 +243,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         Some packages assume that users have a username attribute.
         """
         return self.email
+
+    def get_session_auth_hash(self):
+        """
+        This ensures that sessions are invalidated on 
+        password OR email change.
+        """
+        key_salt = "webauth.models.User.get_session_auth_hash"
+        return salted_hmac(key_salt, self.password + self.email).hexdigest()
 
     def clean(self):
         super().clean()
