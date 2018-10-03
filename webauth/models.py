@@ -12,7 +12,7 @@ from django.contrib.auth.models import (
 from django.utils.crypto import salted_hmac
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
-from webauth import tokens
+from webauth import tokens, fields as webauth_fields
 
 def mass_translated_email(users, subject_template_name, 
         context=None, rcpt_context_object_name='user', 
@@ -181,7 +181,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Apparently, it is an error to include the USERNAME_FIELD in REQUIRED_FIELDS
     REQUIRED_FIELDS = []
 
-    email = models.EmailField(
+    email = webauth_fields.EmailField(
         verbose_name = _('email address'),
         unique = True,
         error_messages={

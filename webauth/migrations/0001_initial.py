@@ -5,6 +5,7 @@ import django.contrib.auth.validators
 from django.db import migrations, models
 import django.utils.timezone
 import webauth.models
+from webauth import fields as webauth_fields
 
 
 class Migration(migrations.Migration):
@@ -22,7 +23,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('password', models.CharField(max_length=128, verbose_name='password')),
                 ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
-                ('email', models.EmailField(error_messages={'unique': 'A user with this email address already exists'}, max_length=254, unique=True, verbose_name='email address')),
+                ('email', webauth_fields.EmailField(error_messages={'unique': 'A user with this email address already exists'}, max_length=254, unique=True, verbose_name='email address')),
                 ('legacy_username', models.CharField(editable=False, help_text="The user's username on the old website, if applicable", max_length=100, null=True, unique=True, validators=[], verbose_name='legacy username')),
                 ('is_staff', models.BooleanField(default=False, help_text='Marks whether or not a user has access to the admin console.', verbose_name='staff')),
                 ('is_superuser', models.BooleanField(default=False, help_text='Marks whether or not a user has root access.', verbose_name='superuser')),
