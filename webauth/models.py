@@ -1,3 +1,4 @@
+from functools import partial
 from django.db import models
 from django.conf import settings
 from django.forms import ValidationError
@@ -52,25 +53,25 @@ ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
 PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE = 'mail/password_reset_subject.txt'
 PASSWORD_RESET_EMAIL_TEMPLATE = 'mail/password_reset_email.html'
 
+def token_context(token_generator, user):
+    token, valid_until = token_generator(user).make_token()
+    return {
+        'uid': urlsafe_base64_encode(force_bytes(user.pk)).decode(),
+        'user': user,
+        'token': token,
+        'valid_until': valid_until
+    }
+
 def dispatch_token_email(users, token_generator, subject_template_name, 
         email_template_name, html_email_template_name, 
         **kwargs):
-
-    def context(user):
-        token, valid_until = token_generator(user).make_token()
-        return {
-            'uid': urlsafe_base64_encode(force_bytes(user.pk)).decode(),
-            'user': user,
-            'token': token,
-            'valid_until': valid_until
-        }
 
     mass_translated_email(
         users,
         subject_template_name, 
         email_template_name=email_template_name,
         html_email_template_name=html_email_template_name,
-        context=context, **kwargs
+        context=partial(token_context, token_generator), **kwargs
     )
 
 def send_activation_email(users,
