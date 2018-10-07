@@ -24,13 +24,13 @@ class UserAdmin(BaseUserAdmin):
 
     ordering = ('email',) 
     search_fields = ('email',)
-    list_display = ('email', 'is_staff', 'is_superuser')
-    list_filter = ('is_staff', 'groups')
+    list_display = ('email', 'date_joined', 'is_active', 'is_staff',)
+    list_filter = ('is_staff', 'is_active', 'groups')
     actions = [resend_activation_email]
 
     # Fieldsets for changing a user's data
     fieldsets = (
-        (None, {'fields': ('email', 'password', 'lang')}),
+        (None, {'fields': ('email', 'password', 'lang', 'date_joined')}),
         (_('Permissions'), {'fields': ('is_active', 'is_staff','is_superuser',
                                         'groups', 'user_permissions')})
     )
@@ -42,6 +42,8 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('email', 'lang'),
         }),
     )
+
+    readonly_fields = ['date_joined',]
 
     def has_change_permission(self, request, obj=None):
         # Only superusers can edit superusers, but we allow them
