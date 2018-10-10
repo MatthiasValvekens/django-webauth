@@ -4,7 +4,6 @@ from django.utils.translation import ugettext_lazy as _
 from webauth.models import User, send_password_reset_email
 
 # TODO: make this dependency optional
-#from django_otp.forms import OTPAuthenticationForm, OTPTokenForm
 from django_otp import forms as otp_forms
 
 class UserCreationForm(forms.ModelForm):
@@ -74,9 +73,11 @@ class OTPAuthenticationForm(otp_forms.OTPAuthenticationForm):
         super(OTPAuthenticationForm, self).__init__(*args, **kwargs)
         for k, v in otp_labels.items():
             self.fields[k].label = v
+        self.fields['otp_token'].widget.attrs['autocomplete'] = 'off'
 
 class OTPTokenForm(otp_forms.OTPTokenForm):
     def __init__(self, *args, **kwargs):
         super(OTPTokenForm, self).__init__(*args, **kwargs)
         for k, v in otp_labels.items():
             self.fields[k].label = v
+        self.fields['otp_token'].widget.attrs['autocomplete'] = 'off'
