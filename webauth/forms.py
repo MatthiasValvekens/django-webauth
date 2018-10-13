@@ -58,7 +58,7 @@ class EmailResetForm(forms.ModelForm):
             self.user.save() 
             # we cannot do this before saving the user, since 
             # the address change would invalidate the activation token
-            self.user.send_unlock_email(target_email=old_email)
+            self.user.send_unlock_email(override_email=old_email)
 
         return self.user
 
