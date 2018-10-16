@@ -5,14 +5,13 @@ from django.conf import settings
 from bs4 import BeautifulSoup
 import webauth.tasks
 
-# TODO: make celery dependency optional in standalone webauth
 
-# inspired by code in PasswordResetForm
+# TODO: make celery dependency optional in standalone webauth
 # TODO: add support for BCC and silent failure toggle
 class EmailDispatcher:
     """
     Class for properly sending i18n-able emails, with html and
-    plain-text alternatives
+    plain-text alternatives.
     """
 
     def __init__(self,
@@ -49,8 +48,8 @@ class EmailDispatcher:
 
         if lang is None:
             lang = self.lang
-
-        if lang is not None:
+            old_lang = None
+        else:
             old_lang = get_language()
             activate(lang)
         html_email = None
@@ -81,10 +80,10 @@ class EmailDispatcher:
 
         if lang is not None:
             activate(old_lang)
-        # TODO: remove this once we have proper outbound logging on the mail server
+        # TODO: remove this once we have proper outbound logging
+        # on the mail server
         print(html_email)
         return message
-
 
     def broadcast_mail(self, *args, in_task=True, **kwargs):
         message = self.make_broadcast_mail(*args, **kwargs)
@@ -119,6 +118,7 @@ class EmailDispatcher:
             webauth.tasks.send_mails.delay(list(message_list()))
         else:
             webauth.tasks.send_mails(list(message_list()))
+
 
 def dispatch_email(subject_template_name, email_template_name,
                    to_email, lang=None, from_email=None,

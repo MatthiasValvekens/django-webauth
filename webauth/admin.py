@@ -1,22 +1,13 @@
-from django.contrib import admin, messages
+from django.contrib import messages
 from django.contrib.auth.admin import (
     UserAdmin as BaseUserAdmin, GroupAdmin as BaseGroupAdmin
 )
-from django.utils.translation import activate, get_language, ugettext_lazy as _ 
+from django.utils.translation import ugettext_lazy as _ 
 
-from webauth.models import User
 from webauth.forms import (
     UserChangeForm, UserCreationForm
 )
 
-
-def resend_activation_email(modeladmin, request, qs):
-    qs.send_activation_email()
-    messages.success(
-        request, _('Sent')
-    )
-
-resend_activation_email.short_description = _('Resend activation email')
 
 class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
@@ -26,13 +17,19 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('email',)
     list_display = ('email', 'date_joined', 'is_active', 'is_staff',)
     list_filter = ('is_staff', 'is_active', 'groups')
-    actions = [resend_activation_email]
+    actions = ['resend_activation_email']
 
     # Fieldsets for changing a user's data
     fieldsets = (
         (None, {'fields': ('email', 'password', 'lang', 'date_joined')}),
-        (_('Permissions'), {'fields': ('is_active', 'is_staff','is_superuser',
-                                        'groups', 'user_permissions')})
+        (
+            _('Permissions'), {
+                'fields': (
+                    'is_active', 'is_staff', 'is_superuser',
+                    'groups', 'user_permissions'
+                )
+            }
+        )
     )
 
     # Fieldsets used when adding a new user
@@ -43,8 +40,16 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ['date_joined',]
+    readonly_fields = ['date_joined']
 
+    def resend_activation_email(self, request, qs):
+        qs.send_activation_email()
+        messages.success(
+            request, _('Sent')
+        )
+        
+    resend_activation_email.short_description = _('Resend activation email')
+        
     def has_change_permission(self, request, obj=None):
         # Only superusers can edit superusers, but we allow them
         # to be viewed by all staff users with the appropriate
@@ -73,13 +78,10 @@ class UserAdmin(BaseUserAdmin):
         if not change:
             obj.send_activation_email()
 
-    # The django.contrib.auth.admin.UserAdmin
-    # prohibits adding users without change permission.
-    # Since non-superusers can't edit permissions,
-    # this is not an issue for us, hence the override.
     def _add_view(self, request, form_url='', extra_context=None):
         if extra_context is None:
-            extra_context = {} 
+            extra_context = {}
+        # noinspection PyProtectedMember
         username_field = self.model._meta.get_field(self.model.USERNAME_FIELD)
         defaults = {
             'auto_populated_fields': (),
@@ -103,7 +105,6 @@ class UserAdmin(BaseUserAdmin):
             obj, 
             post_url_continue
         )
-
 
     def formfield_for_manytomany(self, db_field, request=None, **kwargs):
         # snatched from groupadmin

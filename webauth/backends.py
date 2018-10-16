@@ -2,12 +2,13 @@ from django.contrib.auth.backends import ModelBackend
 from django.conf import settings
 from webauth.models import User
 
+
 class WebauthBackend(ModelBackend):
     """
     Log in via email and optionally join related models onto request.user.
     """
  
-    def authenticate(self, request, username=None, password=None):
+    def authenticate(self, request, username=None, password=None, **kwargs):
         try:
             nrm_username = User.objects.normalize_email(username)
             user = User.objects.get(email=nrm_username)
@@ -17,7 +18,8 @@ class WebauthBackend(ModelBackend):
             User().set_password(password)
             return None
         else:
-            if user.check_password(password) and self.user_can_authenticate(user):
+            if user.check_password(password) \
+                    and self.user_can_authenticate(user):
                 return user
 
     def get_user(self, user_id):

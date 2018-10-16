@@ -1,4 +1,5 @@
 import datetime
+import abc
 from functools import wraps
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, Http404
@@ -6,15 +7,18 @@ from django.utils.http import base36_to_int, int_to_base36
 from django.utils.translation import ugettext_lazy as _
 from django.shortcuts import render, redirect
 from django.conf import settings
+from django.views import View
 from django.views.generic.detail import SingleObjectMixin
 
-class TokenValidator:
+
+class TokenValidator(abc.ABC):
     """Base class for all token validators."""
 
     VALID_TOKEN = 1
     MALFORMED_TOKEN = 2
     EXPIRED_TOKEN = 3
-    
+
+    @abc.abstractmethod
     def parse_token(self, token):
         """Parse a token.
 
@@ -46,7 +50,8 @@ class TokenValidator:
         response, _ = self.parse_token(token)
         return response == TokenValidator.VALID_TOKEN
 
-class ObjectTokenValidator(TokenValidator):
+
+class ObjectTokenValidator(TokenValidator, abc.ABC):
     """Token validator that looks up a token as an attribute on an object."""
 
     token_attribute_name = 'token'
@@ -59,7 +64,8 @@ class ObjectTokenValidator(TokenValidator):
     Controls whether or not the token field is binary.
     If so, :meth:`str.hex` is called first.
     """
-    
+
+    @abc.abstractmethod
     def get_object(self):
         """
         Function called to retrieve the object on which the token lives.
@@ -69,6 +75,7 @@ class ObjectTokenValidator(TokenValidator):
             'Subclasses of ObjectTokenValidator should implement get_object'
         )
 
+    # noinspection PyMethodMayBeStatic
     def object_expired(self):
         """
         If this function returns ``True``, the token will be considered stale.
@@ -94,6 +101,7 @@ class ObjectTokenValidator(TokenValidator):
             return TokenValidator.EXPIRED_TOKEN, None
         else:
             return TokenValidator.VALID_TOKEN, None
+
 
 class TimeBasedTokenGenerator:
     """
@@ -125,6 +133,7 @@ class TimeBasedTokenGenerator:
 
     secret = settings.SECRET_KEY
     lifespan = 0
+    validator = None
 
     def __new__(cls, *args, **kwargs):
         if cls is TimeBasedTokenGenerator:
@@ -143,10 +152,10 @@ class TimeBasedTokenGenerator:
         # As opposed to hasattr(), this ensures that a subclass can only
         # override our inheritance magic by explicitly declaring
         # the relevant attribute
-        if not 'key_salt' in cls.__dict__:
+        if 'key_salt' not in cls.__dict__:
             cls.key_salt = cls.__name__
 
-        if not 'validator' in cls.__dict__:
+        if 'validator' not in cls.__dict__:
             if validator_base is None:
                 # see if we can find a validator somewhere 
                 # in the superclasses because __init_subclass__
@@ -170,7 +179,7 @@ class TimeBasedTokenGenerator:
             cls.validator = type(
                 'ValidatorFrom' + cls.__name__,
                 (validator_base,),
-                { 'generator_class': cls }
+                {'generator_class': cls}
             )
 
     def make_token(self):
@@ -207,20 +216,21 @@ class TimeBasedTokenGenerator:
 
     def _make_token_with_timestamp(self, timestamp, lifespan):
         ts_b36 = int_to_base36(timestamp)
-        hash = salted_hmac(
+        token_hash = salted_hmac(
             self.key_salt,
             str(lifespan) + str(timestamp) + str(self.extra_hash_data()),
             secret=self.secret,
         ).hexdigest()[::2]
-        token = "%s-%s-%s" % (lifespan, ts_b36, hash)
+        token = "%s-%s-%s" % (lifespan, ts_b36, token_hash)
         if lifespan:
             expiry_ts = lifespan + timestamp
             valid_until = self.timestamp_to_datetime(expiry_ts)
-            return (token, valid_until)
+            return token, valid_until
         else:
-            return (token, None)
-    
-    def ts_to_delta(self, ts):
+            return token, None
+
+    @classmethod
+    def ts_to_delta(cls, ts):
         """
         Convert an integer timespan indication to a :class:`datetime.timedelta`
         object.
@@ -231,7 +241,8 @@ class TimeBasedTokenGenerator:
         """
         return datetime.timedelta(seconds=ts * 3600)
 
-    def ts_from_delta(self, delta):
+    @classmethod
+    def ts_from_delta(cls, delta):
         """
         Convert a :class:`datetime.timedelta` object to an integer timespan.
         The default implementation assumes the timespan is in hours.
@@ -257,20 +268,24 @@ class TimeBasedTokenGenerator:
         by applying :meth:`ts_from_delta` to the difference of ``dt`` and 
         ``self.origin``.
 
-        :param datetime.datetime delta: the datetime to convert
+        :param datetime.datetime dt: the datetime to convert
         :rtype: int
         """
         return self.ts_from_delta(dt - self.origin)
 
-    def current_time(self): 
+    @classmethod
+    def current_time(cls):
         return datetime.datetime.now().replace(
             minute=0, second=0, microsecond=0
         )
+
 
 class TimeBasedTokenValidator(TokenValidator):
     """
     Validate tokens from a :class:`TimeBasedTokenGenerator`.
     """
+
+    generator = None
      
     def get_generator(self):
         """
@@ -308,7 +323,7 @@ class TimeBasedTokenValidator(TokenValidator):
 
         # Parse the token
         try:
-            lifespan_str, ts_b36, hash = token.split("-")
+            lifespan_str, ts_b36, token_hash = token.split("-")
             lifespan = int(lifespan_str)
         except ValueError:
             return self.MALFORMED_TOKEN, None
@@ -335,7 +350,8 @@ class TimeBasedTokenValidator(TokenValidator):
         else:
             return self.VALID_TOKEN, None
 
-class RequestTokenValidator(TokenValidator):
+
+class RequestTokenValidator(TokenValidator, abc.ABC):
     """
     Eliminate boilerplate for token validation in views.
     """
@@ -344,32 +360,9 @@ class RequestTokenValidator(TokenValidator):
     pass_valid_until = False
     redirect_url = None
     gone_template_name = None
+    generator_class = None
 
-    def get_generator(self):
-        generator = super().get_generator()
-        if generator is not None:
-            return generator
-
-        try:
-            gen_class = self.generator_class
-        except AttributeError:
-            return None
-
-        # attempt to call from_view_data, else no-args constructor
-        try:
-            return gen_class.from_view_data(
-                self.request, self.view_args, self.view_kwargs, 
-                self.view_instance
-            )
-        except AttributeError:
-            try: 
-                return gen_class()
-            except TypeError:
-                raise TypeError(
-                    'No suitable constructor found for generator_class '
-                    'instantiation.'
-                )
-
+    @abc.abstractmethod
     def get_token(self):
         """
         Retrieve the token from request data.
@@ -379,7 +372,7 @@ class RequestTokenValidator(TokenValidator):
         )
 
     def handle_token(self, view_func, pass_token=False, redirect_url=None,
-            pass_valid_until=False, gone_template_name=None):
+                     pass_valid_until=False, gone_template_name=None):
         """
         Return a response based on the token value and view parameters.
         If a valid token is found, the view is executed with the correct
@@ -398,6 +391,7 @@ class RequestTokenValidator(TokenValidator):
             token = self.get_token()
             parse_res, valid_until = self.parse_token(token)
         except (KeyError, AttributeError):
+            token = valid_until = None
             parse_res = self.MALFORMED_TOKEN
 
         if parse_res == self.VALID_TOKEN:
@@ -429,12 +423,12 @@ class RequestTokenValidator(TokenValidator):
                 else:
                     response_str = _(
                         'The token %(token)s has expired.'
-                    ) % { 'token': token }
+                    ) % {'token': token}
                    
                 return HttpResponseGone(response_str)
             else:
                 return render(
-                    request, gone_template_name, status=410
+                    self.request, gone_template_name, status=410
                 )
         else:
             raise Http404('Malformed token')
@@ -448,8 +442,8 @@ class RequestTokenValidator(TokenValidator):
         If the token is valid, the view is executed normally.
         You can control what extra information is passed to the view via kwargs.
         """
-        def decorator(view_func):
-            @wraps(view_func)
+        def decorator(_view_func):
+            @wraps(_view_func)
             def _wrapped_view(request, *view_args, **view_kwargs):
                 # construct the validator instance
                 validator = cls(
@@ -458,7 +452,7 @@ class RequestTokenValidator(TokenValidator):
                     view_instance=view_instance
                 )
                 return validator.handle_token(
-                    view_func, **kwargs
+                    _view_func, **kwargs
                 )
             return _wrapped_view
 
@@ -473,7 +467,7 @@ class RequestTokenValidator(TokenValidator):
     
     # TODO: put examples from lukweb in docs
     @classmethod
-    def as_mixin(cls, *args, **kwargs):
+    def as_mixin(cls, **mixin_kwargs):
         """
         Returns a view mixin that takes care of token enforcement.
         All kwargs are passed to the :dec:`enforce_token` decorator, and we 
@@ -487,9 +481,10 @@ class RequestTokenValidator(TokenValidator):
             'pass_valid_until': True,
             'pass_token': True,
         }
-        decorator_kwargs.update(kwargs)
-        class Mixin:
-            def dispatch(self, *args, **kwargs):
+        decorator_kwargs.update(mixin_kwargs)
+
+        class Mixin(View):
+            def dispatch(self, *view_args, **view_kwargs):
                 def _dispatch(*args, valid_until=None, token=None, **kwargs):
                     self.valid_until = valid_until
                     self.token = token
@@ -499,12 +494,12 @@ class RequestTokenValidator(TokenValidator):
                 wrapped_view = cls.enforce_token(
                     _dispatch, view_instance=self, **decorator_kwargs
                 )
-                return wrapped_view(*args, **kwargs)
+                return wrapped_view(*view_args, **view_kwargs)
 
         return Mixin
     
     def __init__(self, request, view_args=None, view_kwargs=None,
-            view_instance=None, **kwargs):
+                 view_instance=None, **kwargs):
         self.request = request
         self.view_args = view_args
         self.view_kwargs = view_kwargs
@@ -512,13 +507,65 @@ class RequestTokenValidator(TokenValidator):
         self.view_instance = view_instance
         super().__init__(**kwargs)
 
-class UrlTokenValidator(RequestTokenValidator):
 
-    def get_token(self): 
+class TimeBasedRequestTokenValidator(
+        TimeBasedTokenValidator,
+        RequestTokenValidator,
+        abc.ABC):
+
+    def get_generator(self):
+        """
+        Fetch the generator to obtain tokens from.
+        The default implementation requires that either
+        ``self.generator`` or ``self.generator_class``
+        be defined.
+
+        If ``self.generator`` is specified, the value of this
+        instance attribute is used.
+        If not, this method looks for ``self.generator_class``
+        and attempts to call its :func:`from_view_data` method.
+        Failing that, the no-arguments constructor is called.
+
+        By default, subclasses of :class:`TimeBasedTokenGenerator`
+        make sure that their respective `validator` class attributes
+        come with the right fields to make this work out of the box.
+
+        :rtype: TimeBasedTokenGenerator
+        """
+        generator = super().get_generator()
+        if generator is not None:
+            return generator
+
+        try:
+            gen_class = self.generator_class
+        except AttributeError:
+            return None
+
+        # attempt to call from_view_data, else no-args constructor
+        try:
+            return gen_class.from_view_data(
+                self.request, self.view_args, self.view_kwargs,
+                self.view_instance
+            )
+        except AttributeError:
+            try:
+                return gen_class()
+            except TypeError:
+                raise TypeError(
+                    'No suitable constructor found for generator_class '
+                    'instantiation.'
+                )
+
+
+class UrlTokenValidator(RequestTokenValidator, abc.ABC):
+
+    def get_token(self):
         return self.view_kwargs['token']
 
-class SessionTokenValidator(RequestTokenValidator):
-    def get_token(self): 
+
+class SessionTokenValidator(RequestTokenValidator, abc.ABC):
+
+    def get_token(self):
         try:
             session_key = self.generator_class.session_key
         except AttributeError:
@@ -535,10 +582,13 @@ class SessionTokenValidator(RequestTokenValidator):
             pass
         return token
 
-class DBUrlTokenValidator(UrlTokenValidator):
+
+class DBUrlTokenValidator(UrlTokenValidator, abc.ABC):
     """
     Validate tokens on views that render single objects.
     """
+
+    object = None
 
     def get_object(self):
         try:
@@ -548,57 +598,79 @@ class DBUrlTokenValidator(UrlTokenValidator):
                 raise ValueError(
                     'DBUrlTokenValidator requires SingleObjectMixin views'
                 )
+
             # retrieve object from view and cache it
             obj = self.view_instance.get_object()
-            def get_cached_object(queryset=None):
+
+            def get_cached_object(**_kwargs):
                 return obj
+
             self.view_instance.get_object = get_cached_object
             self.object = obj
             return self.object
 
-class TimeBasedUrlTokenValidator(UrlTokenValidator, TimeBasedTokenValidator):
+
+class TimeBasedUrlTokenValidator(
+        UrlTokenValidator,
+        TimeBasedRequestTokenValidator):
     pass
 
-class TimeBasedSessionTokenValidator(SessionTokenValidator, 
-        TimeBasedTokenValidator):
+
+class TimeBasedSessionTokenValidator(
+        SessionTokenValidator,
+        TimeBasedRequestTokenValidator):
     pass
 
 
-class TimeBasedUrlTokenGenerator(TimeBasedTokenGenerator,
+class TimeBasedUrlTokenGenerator(
+        TimeBasedTokenGenerator,
         validator_base=TimeBasedUrlTokenValidator):
     pass
 
-class TimeBasedSessionTokenGenerator(TimeBasedTokenGenerator,
+
+class TimeBasedSessionTokenGenerator(
+        TimeBasedTokenGenerator,
         validator_base=TimeBasedSessionTokenValidator):
 
     consume_token = True
     
     @classmethod
-    def from_view_data(cls, request, *args, **kwargs):
+    def from_view_data(cls, request, *_args, **_kwargs):
         return cls(request)
 
     def __init__(self, request):
         self.request = request
 
+    def get_session_key(self):
+        try:
+            return self.session_key
+        except AttributeError:
+            raise NotImplemented
+
     def embed_token(self):
         # The token is session-bound, so this makes sense.
         # also, this avoids leaking the token through the URL
         req = self.request
-        req.session[self.session_key] = self.bare_token()
+        req.session[self.get_session_key()] = self.bare_token()
 
 
-class TimeBasedDBUrlTokenValidator(DBUrlTokenValidator, TimeBasedTokenValidator):
+class TimeBasedDBUrlTokenValidator(
+        DBUrlTokenValidator, TimeBasedTokenValidator):
 
     def get_generator(self):
         # instantiate a generator using the object we have
         return self.generator_class(self.get_object())
 
+
 class ObjectDBUrlTokenValidator(DBUrlTokenValidator, ObjectTokenValidator):
     pass
 
-class TimeBasedDBUrlTokenGenerator(TimeBasedTokenGenerator,
+
+class TimeBasedDBUrlTokenGenerator(
+        TimeBasedTokenGenerator,
         validator_base=TimeBasedDBUrlTokenValidator):
     pass
+
 
 class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
     """
@@ -629,14 +701,18 @@ class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
     def get_lifespan(self):
         return settings.PASSWORD_RESET_TIMEOUT_DAYS * 24
 
+
 class PasswordResetTokenGenerator(AccountTokenHandler):
     pass
+
 
 class UnlockTokenGenerator(AccountTokenHandler):
     pass
 
+
 class ActivationTokenGenerator(AccountTokenHandler):
     pass
+
 
 class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
 

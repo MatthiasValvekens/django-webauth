@@ -1,16 +1,11 @@
 from django.urls import reverse_lazy
 from functools import partial
-from django.contrib.auth.views import (
-    PasswordResetConfirmView as BasePasswordResetConfirmView,
-    PasswordResetDoneView, PasswordResetCompleteView, PasswordChangeView, 
-    PasswordChangeDoneView, LoginView, LogoutView
-)
-from django.contrib.auth import BACKEND_SESSION_KEY, forms as auth_forms
+from django.contrib.auth import BACKEND_SESSION_KEY, views as auth_views
 from django.utils.translation import ugettext_lazy as _ 
-from django.core.exceptions import SuspiciousOperation
+from django.core.exceptions import SuspiciousOperation, ValidationError
 from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.utils.http import urlsafe_base64_decode
-from django.views import i18n
+from django.views import i18n, View
 from django.views.generic.edit import FormView
 from django.utils import translation
 from django.shortcuts import render, redirect
@@ -19,19 +14,28 @@ from django.contrib.auth.mixins import UserPassesTestMixin
 from webauth import utils, tokens, forms
 from webauth.models import User
 
-class OTPRequiredMixin:
+LogoutView = auth_views.LogoutView
+PasswordChangeView = auth_views.PasswordChangeView
+PasswordChangeDoneView = auth_views.PasswordChangeDoneView
+PasswordResetDoneView = auth_views.PasswordResetDoneView
+PasswordResetCompleteView = auth_views.PasswordResetCompleteView
+
+
+class OTPRequiredMixin(View):
     def dispatch(self, request, *args, **kwargs):
         if not self.request.user.is_verified():
             return redirect(
                 utils.login_redirect_url(request.get_full_path(), otp=True)
             )
         return super(OTPRequiredMixin, self).dispatch(request, *args, **kwargs)
- 
-class LoginI18NRedirectView(LoginView):
+
+
+class LoginI18NRedirectView(auth_views.LoginView):
 
     def get_redirect_url(self):
         url = super(LoginI18NRedirectView, self).get_redirect_url()
         return utils.strip_lang(url)
+
 
 class OTPLoginView(LoginI18NRedirectView):
     """
@@ -51,6 +55,7 @@ class OTPLoginView(LoginI18NRedirectView):
 
 # TODO subclass PasswordResetView and PasswordResetConfirmView!!!!!
 
+
 class PasswordResetView(FormView):
     success_url = reverse_lazy('password_reset_done')
     template_name = 'registration/password_reset_form.html'
@@ -61,8 +66,10 @@ class PasswordResetView(FormView):
         form.save(**self.email_opts)
         return super().form_valid(form)
 
-class PasswordResetConfirmView(BasePasswordResetConfirmView):
+
+class PasswordResetConfirmView(auth_views.PasswordResetConfirmView):
     token_generator = tokens.PasswordResetTokenGenerator.validator
+
 
 class ActivateAccountView(PasswordResetConfirmView):
     form_class = forms.ActivateAccountForm
@@ -71,9 +78,11 @@ class ActivateAccountView(PasswordResetConfirmView):
     title = _('Enter password')
     token_generator = tokens.ActivationTokenGenerator.validator
 
-class AccountActivatedView(PasswordResetCompleteView):
+
+class AccountActivatedView(auth_views.PasswordResetCompleteView):
     template_name = 'registration/account_activated.html'
     title = _('Account activated')
+
 
 def unlock_account_view(request, uidb64, token):
     validlink = False
@@ -89,9 +98,10 @@ def unlock_account_view(request, uidb64, token):
         user.is_active = True
         user.save()
         validlink = True
-    return render(request, 
+    return render(
+        request,
         'registration/unlock_account.html', 
-        context={ 'validlink': validlink }
+        context={'validlink': validlink}
     )
 
 
@@ -110,7 +120,8 @@ def email_reset_view(request):
         if request.user.is_authenticated:
             return redirect(reverse_lazy('index'))
         return render(request, 'registration/email_reset_done.html')
-        
+
+
 def set_language(request):
     response = i18n.set_language(request)
     user = request.user
@@ -120,6 +131,7 @@ def set_language(request):
         user.lang = request.session[translation.LANGUAGE_SESSION_KEY]
         user.save()
     return response
+
 
 class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
     template_name = 'registration/confirm_password.html'
@@ -140,5 +152,5 @@ class PasswordConfirmView(UserPassesTestMixin, LoginI18NRedirectView):
                 'PasswordConfirmView POST data does not match '
                 'currently authenticated user.'
             )
-        gen = tokens.PasswordConfirmationTokenGenerator(req).embed_token()
+        tokens.PasswordConfirmationTokenGenerator(req).embed_token()
         return HttpResponseRedirect(self.get_success_url())

@@ -1,5 +1,4 @@
 from dateutil.parser import parse as parse_datetime
-from datetime import datetime
 from django.conf import settings
 from django.contrib.auth import logout
 from django.core.exceptions import ImproperlyConfigured
@@ -19,6 +18,7 @@ except AttributeError:
         "(part of) the InactiveTimeoutMiddleware functionality, please set "
         "the relevant settings to None."
     )
+
 
 class InactiveTimeoutMiddleware:
     """

@@ -1,21 +1,20 @@
 from functools import partial
 from django.db import models
 from django.conf import settings
-from django.forms import ValidationError
-from django.utils.translation import ugettext_lazy as _ 
+from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.auth.models import (
     BaseUserManager, AbstractBaseUser, PermissionsMixin, Group as BaseGroup
 )
 from django.utils.crypto import salted_hmac
-from django.contrib.auth.validators import UnicodeUsernameValidator
 from webauth.email import dispatch_email, EmailDispatcher
 from webauth import tokens, fields as webauth_fields
 
-def mass_translated_email(users, subject_template_name, 
+
+def mass_translated_email(
+        users, subject_template_name,
         context=None, rcpt_context_object_name='user', 
         attachments=None, override_email=None, **kwargs):
     """
@@ -44,14 +43,14 @@ def mass_translated_email(users, subject_template_name,
         subject_template_name, **kwargs
     ).send_dynamic_emails(list(dynamic_data()), attachments=attachments)
 
+
 ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
 ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
 UNLOCK_EMAIL_SUBJECT_TEMPLATE = 'mail/unlock_email_subject.txt'
 UNLOCK_EMAIL_TEMPLATE = 'mail/unlock_email.html'
-ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
-ACTIVATION_EMAIL_TEMPLATE = 'mail/activation_email.html'
 PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE = 'mail/password_reset_subject.txt'
 PASSWORD_RESET_EMAIL_TEMPLATE = 'mail/password_reset_email.html'
+
 
 def token_context(token_generator, user):
     token, valid_until = token_generator(user).make_token()
@@ -62,8 +61,10 @@ def token_context(token_generator, user):
         'valid_until': valid_until
     }
 
-def dispatch_token_email(users, token_generator, subject_template_name, 
-        email_template_name, html_email_template_name, 
+
+def dispatch_token_email(
+        users, token_generator, subject_template_name,
+        email_template_name, html_email_template_name,
         **kwargs):
 
     mass_translated_email(
@@ -74,7 +75,9 @@ def dispatch_token_email(users, token_generator, subject_template_name,
         context=partial(token_context, token_generator), **kwargs
     )
 
-def send_activation_email(users,
+
+def send_activation_email(
+        users,
         subject_template_name=ACTIVATION_EMAIL_SUBJECT_TEMPLATE,
         email_template_name=None,
         html_email_template_name=ACTIVATION_EMAIL_TEMPLATE,
@@ -88,7 +91,9 @@ def send_activation_email(users,
         **kwargs
     )
 
-def send_unlock_email(users,
+
+def send_unlock_email(
+        users,
         subject_template_name=UNLOCK_EMAIL_SUBJECT_TEMPLATE,
         email_template_name=None,
         html_email_template_name=UNLOCK_EMAIL_TEMPLATE,
@@ -102,7 +107,9 @@ def send_unlock_email(users,
         **kwargs
     )
 
-def send_password_reset_email(users,
+
+def send_password_reset_email(
+        users,
         subject_template_name=PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE,
         email_template_name=None,
         html_email_template_name=PASSWORD_RESET_EMAIL_TEMPLATE,
@@ -116,6 +123,7 @@ def send_password_reset_email(users,
         **kwargs
     )
 
+
 class UserQuerySet(models.QuerySet):
     
     # wrappers around the functions defined above
@@ -124,7 +132,6 @@ class UserQuerySet(models.QuerySet):
 
     def send_activation_email(self, *args, **kwargs):
         send_activation_email(self, *args, **kwargs)
-
 
 
 class UserManager(BaseUserManager):
@@ -179,12 +186,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     USERNAME_FIELD = 'email'
     EMAIL_FIELD = 'email'
-    # Apparently, it is an error to include the USERNAME_FIELD in REQUIRED_FIELDS
+    # Apparently, it is an error to include the USERNAME_FIELD
+    # in REQUIRED_FIELDS
     REQUIRED_FIELDS = []
 
     email = webauth_fields.EmailField(
-        verbose_name = _('email address'),
-        unique = True,
+        verbose_name=_('email address'),
+        unique=True,
         error_messages={
             'unique': _(
                 'A user with this email address '
@@ -258,7 +266,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.email = self.__class__.objects.normalize_email(self.email)
 
     def send_email(self, subject_template_name, 
-            email_template_name=None, html_email_template_name=None, **kwargs):
+                   email_template_name=None, html_email_template_name=None,
+                   **kwargs):
         # add user to context, if applicable
         context = kwargs.pop('context', {})
         context['user'] = self
@@ -278,6 +287,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def send_password_reset_email(self, *args, **kwargs):
         send_password_reset_email([self], *args, **kwargs)
+
 
 # for future extensibility and admin consistency
 class Group(BaseGroup): 
