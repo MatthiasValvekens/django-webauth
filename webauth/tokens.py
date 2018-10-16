@@ -182,6 +182,16 @@ class TimeBasedTokenGenerator:
                 {'generator_class': cls}
             )
 
+    @classmethod
+    def from_view_data(cls, request, view_args, view_kwargs, view_instance):
+        try:
+            return cls()
+        except TypeError:
+            raise TypeError(
+                'No suitable constructor found to instantiate '
+                'generator from view data.'
+            )
+
     def make_token(self):
         """
         :returns: a token and the timestamp when it expires.
@@ -524,7 +534,6 @@ class TimeBasedRequestTokenValidator(
         instance attribute is used.
         If not, this method looks for ``self.generator_class``
         and attempts to call its :func:`from_view_data` method.
-        Failing that, the no-arguments constructor is called.
 
         By default, subclasses of :class:`TimeBasedTokenGenerator`
         make sure that their respective `validator` class attributes
@@ -536,25 +545,12 @@ class TimeBasedRequestTokenValidator(
         if generator is not None:
             return generator
 
-        try:
-            gen_class = self.generator_class
-        except AttributeError:
-            return None
+        gen_class = self.generator_class
 
-        # attempt to call from_view_data, else no-args constructor
-        try:
-            return gen_class.from_view_data(
-                self.request, self.view_args, self.view_kwargs,
-                self.view_instance
-            )
-        except AttributeError:
-            try:
-                return gen_class()
-            except TypeError:
-                raise TypeError(
-                    'No suitable constructor found for generator_class '
-                    'instantiation.'
-                )
+        return gen_class.from_view_data(
+            self.request, self.view_args, self.view_kwargs,
+            self.view_instance
+        )
 
 
 class UrlTokenValidator(RequestTokenValidator, abc.ABC):
