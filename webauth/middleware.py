@@ -56,5 +56,8 @@ class InactiveTimeoutMiddleware:
                 if request.user.is_authenticated:
                     request.session[LAST_REQUEST_SESSION_KEY] = now.isoformat()
                 else:
-                    del request.session[LAST_REQUEST_SESSION_KEY]
+                    try:
+                        del request.session[LAST_REQUEST_SESSION_KEY]
+                    except KeyError:
+                        pass
         return self.get_response(request)
