@@ -361,6 +361,16 @@ class TimeBasedTokenValidator(TokenValidator):
             return self.VALID_TOKEN, None
 
 
+def _maybe_pass_kwarg(name, pass_kwarg, value, kwargs):
+    if pass_kwarg:
+        kwargs[name] = value
+    else:
+        try:
+            del kwargs[name]
+        except KeyError:
+            pass
+
+
 class RequestTokenValidator(TokenValidator, abc.ABC):
     """
     Eliminate boilerplate for token validation in views.
@@ -381,8 +391,8 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
             'Subclasses must implement get_token'
         )
 
-    def handle_token(self, view_func, pass_token=False, redirect_url=None,
-                     pass_valid_until=False, gone_template_name=None):
+    def handle_token(self, view_func, pass_token=None, redirect_url=None,
+                     pass_valid_until=None, gone_template_name=None):
         """
         Return a response based on the token value and view parameters.
         If a valid token is found, the view is executed with the correct
@@ -396,6 +406,10 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
         """
         redirect_url = redirect_url or self.redirect_url
         gone_template_name = gone_template_name or self.gone_template_name
+        if pass_valid_until is None:
+            pass_valid_until = self.pass_valid_until
+        if pass_token is None:
+            pass_token = self.pass_token
         # validate the token
         try:
             token = self.get_token()
@@ -405,19 +419,19 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
             parse_res = self.MALFORMED_TOKEN
 
         if parse_res == self.VALID_TOKEN:
-            # decide which arguments to pass through 
-            if pass_valid_until or self.pass_valid_until:
-                self.view_kwargs['valid_until'] = valid_until
-            if pass_token or self.pass_token:
-                self.view_kwargs['token'] = token
+            # decide which arguments to pass through or remove
+            _maybe_pass_kwarg(
+                'valid_until', pass_valid_until, valid_until, self.view_kwargs
+            )
+            _maybe_pass_kwarg(
+                'token', pass_token, token, self.view_kwargs
+            )
             return view_func(
                 self.request, *self.view_args, **self.view_kwargs
             )
         elif redirect_url is not None:
             if callable(redirect_url):
-                redirect_url = redirect_url(
-                    self.request, *self.view_args, **self.view_kwargs
-                )
+                redirect_url = redirect_url(self.request)
             return redirect(redirect_url)
         elif parse_res == self.EXPIRED_TOKEN:
             # Return a 410 response
@@ -615,7 +629,7 @@ class TimeBasedUrlTokenValidator(
 class TimeBasedSessionTokenValidator(
         SessionTokenValidator,
         TimeBasedRequestTokenValidator):
-    pass
+    pass_token = False
 
 
 class TimeBasedUrlTokenGenerator(
