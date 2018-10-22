@@ -598,8 +598,6 @@ class DBUrlTokenValidator(UrlTokenValidator, abc.ABC):
     Validate tokens on views that render single objects.
     """
 
-    object = None
-
     def get_object(self):
         try:
             return self.object
