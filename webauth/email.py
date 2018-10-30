@@ -16,7 +16,7 @@ class EmailDispatcher:
 
     def __init__(self,
                  subject_template_name, email_template_name=None,
-                 lang=None, from_email=None,
+                 lang=None, from_email=None, async=True,
                  html_email_template_name=None, base_context=None):
         self.subject_template_name = subject_template_name
         self.email_template_name = email_template_name
@@ -24,6 +24,7 @@ class EmailDispatcher:
         self.from_email = from_email
         self.html_email_template_name = html_email_template_name
         self.base_context = {} if base_context is None else base_context
+        self.async = async
 
     def make_broadcast_mail(self, to_emails, lang=None, extra_context=None,
                             attachments=None):
@@ -85,9 +86,10 @@ class EmailDispatcher:
         print(html_email)
         return message
 
-    def broadcast_mail(self, *args, in_task=True, **kwargs):
+    def broadcast_mail(self, *args, **kwargs):
         message = self.make_broadcast_mail(*args, **kwargs)
-        if in_task:
+        async = kwargs.pop('async', self.async)
+        if async:
             webauth.tasks.send_mail.delay(message)
         else:
             message.send(message)
@@ -95,15 +97,15 @@ class EmailDispatcher:
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
 
-    def send_dynamic_emails(self, recipient_data,
-                            in_task=True, extra_context=None):
+    def send_dynamic_emails(self, recipient_data, **kwargs):
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
         Entries of recipient_data should be a triple
         (email, lang, context, attachments).
         """
-        extra_context = extra_context or {}
+        extra_context = kwargs.pop('extra_context', {})
+        async = kwargs.pop('extra_context', self.async)
 
         def message_list():
             for email, lang, context, attachments in recipient_data:
@@ -116,7 +118,7 @@ class EmailDispatcher:
                     attachments=attachments,
                 )
 
-        if in_task:
+        if async:
             webauth.tasks.send_mails.delay(list(message_list()))
         else:
             webauth.tasks.send_mails(list(message_list()))
