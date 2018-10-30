@@ -95,23 +95,25 @@ class EmailDispatcher:
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
 
-    def send_dynamic_emails(self, recipient_data, in_task=True, **kwargs):
+    def send_dynamic_emails(self, recipient_data,
+                            in_task=True, extra_context=None):
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
-        Entries of recipient_data should be a triple (email, lang, context).
+        Entries of recipient_data should be a triple
+        (email, lang, context, attachments).
         """
-        extra_context = kwargs.pop('extra_context', {})
+        extra_context = extra_context or {}
 
         def message_list():
-            for email, lang, context in recipient_data:
+            for email, lang, context, attachments in recipient_data:
                 the_context = dict(self.base_context)
                 the_context.update(extra_context)
                 the_context.update(context)
                 yield self.make_broadcast_mail(
                     [email], lang=lang,
                     extra_context=the_context,
-                    **kwargs
+                    attachments=attachments,
                 )
 
         if in_task:

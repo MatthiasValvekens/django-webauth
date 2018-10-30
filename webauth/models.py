@@ -20,6 +20,8 @@ def mass_translated_email(
     """
     Mass-email users. Context can be a one-argument callable, 
     to which the user will be passed, or a static dict.
+    Similarly, attachments can be a one-argument callable or a
+    static list.
     The context dict passed to the email dispatcher will
     always include the user object.
     Other kwargs will be passed to the EmailDispatcher's __init__.
@@ -36,12 +38,16 @@ def mass_translated_email(
             the_context[rcpt_context_object_name] = user
             # necessary for email reset functionality
             email = override_email or user.email
-            yield email, user.lang, the_context
 
-    # we have to consume the generator, otherwise pickle complains
+            if callable(attachments):
+                the_attachments = attachments(user)
+            else:
+                the_attachments = attachments
+            yield email, user.lang, the_context, the_attachments
+
     EmailDispatcher(
         subject_template_name, **kwargs
-    ).send_dynamic_emails(list(dynamic_data()), attachments=attachments)
+    ).send_dynamic_emails(dynamic_data())
 
 
 ACTIVATION_EMAIL_SUBJECT_TEMPLATE = 'mail/activation_email_subject.txt'
