@@ -1,4 +1,6 @@
+import logging
 from functools import partial
+
 from django.db import models
 from django.conf import settings
 from django.utils.translation import ugettext_lazy as _
@@ -13,10 +15,12 @@ from webauth.email import dispatch_email, EmailDispatcher
 from webauth import tokens, fields as webauth_fields
 
 
+# TODO: test error handlers
 def mass_translated_email(
         users, subject_template_name,
         context=None, rcpt_context_object_name='user', 
-        attachments=None, override_email=None, **kwargs):
+        attachments=None, override_email=None, allow_partial_send=True,
+        **kwargs):
     """
     Mass-email users. Context can be a one-argument callable, 
     to which the user will be passed, or a static dict.
@@ -26,13 +30,27 @@ def mass_translated_email(
     always include the user object.
     Other kwargs will be passed to the EmailDispatcher's __init__.
 
+    Any exceptions thrown in the above callback methods will be logged
+    at the ERROR level. The affected message(s) will not be sent.
+
     This method will work with any model with a .lang and .email attribute.
     """
+    logger = logging.getLogger(__name__ + '.mass_translated_email')
 
     def dynamic_data():
         for user in users:
             if callable(context):
-                the_context = context(user)
+                try:
+                    the_context = context(user)
+                except Exception as e:
+                    logger.error(
+                        'Context construction for object %s' 
+                        'failed.' % str(user)
+                    )
+                    if allow_partial_send:
+                        continue
+                    else:
+                        raise e
             else:
                 the_context = {} if context is None else context
             the_context[rcpt_context_object_name] = user
@@ -40,7 +58,17 @@ def mass_translated_email(
             email = override_email or user.email
 
             if callable(attachments):
-                the_attachments = attachments(user)
+                try:
+                    the_attachments = attachments(user)
+                except Exception as e:
+                    logger.error(
+                        'Attachment construction for object %s'
+                        'failed.' % str(user)
+                    )
+                    if allow_partial_send:
+                        continue
+                    else:
+                        raise e
             else:
                 the_attachments = attachments
             yield email, user.lang, the_context, the_attachments
