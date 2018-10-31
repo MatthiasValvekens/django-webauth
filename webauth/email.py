@@ -76,8 +76,8 @@ class EmailDispatcher:
             message.attach_alternative(html_email, 'text/html')
 
         if attachments:
-            for a in attachments:
-                message.attach(a)
+            for filename, a, mimetype in attachments:
+                message.attach(filename, a, mimetype)
 
         if lang is not None:
             activate(old_lang)

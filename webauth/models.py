@@ -32,6 +32,7 @@ def mass_translated_email(
 
     Any exceptions thrown in the above callback methods will be logged
     at the ERROR level. The affected message(s) will not be sent.
+    The callbacks can return None to skip messages.
 
     This method will work with any model with a .lang and .email attribute.
     """
@@ -42,10 +43,18 @@ def mass_translated_email(
             if callable(context):
                 try:
                     the_context = context(user)
+                    if the_context is None:
+                        # assume the caller dealt with logging etc.
+                        # if they return None
+                        logger.info(
+                            'Context constructor returned None. '
+                            'Skipping this message.'
+                        )
+                        continue
                 except Exception as e:
                     logger.error(
                         'Context construction for object %s' 
-                        'failed.' % str(user)
+                        'failed.' % str(user), e
                     )
                     if allow_partial_send:
                         continue
@@ -60,10 +69,16 @@ def mass_translated_email(
             if callable(attachments):
                 try:
                     the_attachments = attachments(user)
+                    if the_attachments is None:
+                        logger.info(
+                            'Attachment constructor returned None. '
+                            'Skipping this message.'
+                        )
+                        continue
                 except Exception as e:
                     logger.error(
                         'Attachment construction for object %s'
-                        'failed.' % str(user)
+                        'failed.' % str(user), e
                     )
                     if allow_partial_send:
                         continue
