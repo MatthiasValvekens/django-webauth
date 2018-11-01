@@ -87,8 +87,8 @@ class EmailDispatcher:
         return message
 
     def broadcast_mail(self, *args, **kwargs):
-        message = self.make_broadcast_mail(*args, **kwargs)
         async = kwargs.pop('async', self.async)
+        message = self.make_broadcast_mail(*args, **kwargs)
         if async:
             webauth.tasks.send_mail.delay(message)
         else:
