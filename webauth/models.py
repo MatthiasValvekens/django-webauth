@@ -32,7 +32,7 @@ def mass_translated_email(
             if callable(context):
                 the_context = context(user)
             else:
-                the_context = {} if context is None else context
+                the_context = {} if context is None else dict(context)
             the_context[rcpt_context_object_name] = user
             # necessary for email reset functionality
             email = override_email or user.email
