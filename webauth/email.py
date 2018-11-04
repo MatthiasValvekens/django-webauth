@@ -105,7 +105,7 @@ class EmailDispatcher:
         (email, lang, context, attachments).
         """
         extra_context = kwargs.pop('extra_context', {})
-        async = kwargs.pop('extra_context', self.async)
+        async = kwargs.pop('async', self.async)
 
         def message_list():
             for email, lang, context, attachments in recipient_data:
