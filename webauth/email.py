@@ -27,7 +27,7 @@ class EmailDispatcher:
         self.async = async
 
     def make_broadcast_mail(self, to_emails, lang=None, extra_context=None,
-                            attachments=None):
+                            attachments=None, headers=None):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -70,7 +70,8 @@ class EmailDispatcher:
             ).get_text()
 
         message = EmailMultiAlternatives(
-            subject, body, self.from_email, to_emails
+            subject, body, self.from_email, to_emails,
+            headers=(headers or {})
         )
         if html_email is not None:
             message.attach_alternative(html_email, 'text/html')
@@ -112,6 +113,7 @@ class EmailDispatcher:
                 email = options['email']
                 lang = options['lang']
                 context = options['context']
+                headers = options.get('headers')
                 attachments = options.get('attachments', [])
                 the_context = dict(self.base_context)
                 the_context.update(extra_context)
@@ -120,6 +122,7 @@ class EmailDispatcher:
                     [email], lang=lang,
                     extra_context=the_context,
                     attachments=attachments,
+                    headers=headers
                 )
 
         if async:

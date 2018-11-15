@@ -12,7 +12,7 @@ from django.contrib.auth.models import (
 )
 from django.utils.crypto import salted_hmac
 from webauth.email import dispatch_email, EmailDispatcher
-from webauth import tokens, fields as webauth_fields
+from webauth import tokens, fields as webauth_fields, utils
 
 
 # TODO: test error handlers
@@ -86,6 +86,9 @@ def mass_translated_email(
                         raise e
             else:
                 the_attachments = attachments
+            name = getattr(user, 'full_name', getattr(user, 'name', None))
+            if name is not None:
+                email = utils.named_email(name, email)
             yield {
                 'email': email,
                 'lang': user.lang,

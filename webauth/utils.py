@@ -56,3 +56,10 @@ def _login_redirect_url(target, login_url_parts,
     querystring[redirect_field_name] = target
     login_url_parts[4] = querystring.urlencode(safe='/')
     return urlunparse(login_url_parts)
+
+
+def named_email(name, email):
+    return '%s <%s>' % (
+        name.replace('\n', ''),
+        email
+    )
