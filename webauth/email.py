@@ -101,26 +101,18 @@ class EmailDispatcher:
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
-        Entries of recipient_data should be a triple
-        (email, lang, context, attachments) or (email, lang, context)
+        Entries of recipient_data should be a dict with at least the keys
+        'email', 'lang' and 'context'
         """
         extra_context = kwargs.pop('extra_context', {})
         async = kwargs.pop('async', self.async)
 
         def message_list():
-            for t in recipient_data:
-                if len(t) == 3:
-                    email, lang, context = t
-                    attachments = []
-                elif len(t) == 4:
-                    email, lang, context, attachments = t
-                    if attachments is None:
-                        attachments = []
-                else:
-                    raise ValueError(
-                        'send_dynamic_emails expects tuples of '
-                        'length 3 or 4, not %s.' % str(t)
-                    )
+            for options in recipient_data:
+                email = options['email']
+                lang = options['lang']
+                context = options['context']
+                attachments = options.get('attachments', [])
                 the_context = dict(self.base_context)
                 the_context.update(extra_context)
                 the_context.update(context)

@@ -86,7 +86,12 @@ def mass_translated_email(
                         raise e
             else:
                 the_attachments = attachments
-            yield email, user.lang, the_context, the_attachments
+            yield {
+                'email': email,
+                'lang': user.lang,
+                'context': the_context,
+                'attachments': the_attachments
+            }
 
     EmailDispatcher(
         subject_template_name, **kwargs
