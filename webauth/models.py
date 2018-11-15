@@ -324,15 +324,18 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def send_email(self, subject_template_name, 
                    email_template_name=None, html_email_template_name=None,
-                   **kwargs):
+                   full_name=None, **kwargs):
         # add user to context, if applicable
         context = kwargs.pop('context', {})
         context['user'] = self
         kwargs['context'] = context
+        email = self.email if full_name is not None else utils.named_email(
+            full_name, self.email
+        )
         dispatch_email(
             subject_template_name, email_template_name=email_template_name,
             html_email_template_name=html_email_template_name,
-            to_email=self.email, lang=self.lang,
+            to_email=email, lang=self.lang,
             **kwargs
         )
 
