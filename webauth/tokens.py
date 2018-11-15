@@ -183,14 +183,24 @@ class TimeBasedTokenGenerator:
             )
 
     @classmethod
-    def from_view_data(cls, request, view_args, view_kwargs, view_instance):
+    def from_view_data(cls, request, view_args=None,
+                       view_kwargs=None, view_instance=None):
         try:
-            return cls()
+            kwargs = cls.get_constructor_kwargs(
+                request, view_args, view_kwargs, view_instance
+            )
+            return cls(**kwargs)
         except TypeError:
             raise TypeError(
                 'No suitable constructor found to instantiate '
                 'generator from view data.'
             )
+
+    @classmethod
+    def get_constructor_kwargs(cls, request, view_args=None,
+                               view_kwargs=None, view_instance=None):
+        # a more subclassing-friendly approach to from_view_data
+        return {}
 
     def make_token(self):
         """
