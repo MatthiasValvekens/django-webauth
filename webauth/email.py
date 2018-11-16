@@ -4,6 +4,7 @@ from django.template import loader
 from django.conf import settings
 from bs4 import BeautifulSoup
 import webauth.tasks
+import html2text
 
 
 # TODO: make celery dependency optional in standalone webauth
@@ -65,9 +66,18 @@ class EmailDispatcher:
         if self.email_template_name is not None:
             body = loader.render_to_string(self.email_template_name, context)
         else:
-            body = BeautifulSoup(
-                html_email, features="html.parser"
-            ).get_text()
+            # I'm gonna assume that h2t and beautifulsoup are not thread-safe,
+            # so let's not reuse these objects
+            body_html = str(
+                BeautifulSoup(
+                    html_email, features="html.parser"
+                )
+            )
+            html_renderer = html2text.HTML2Text()
+            html_renderer.ignore_links = True
+            html_renderer.ignore_images = True
+            html_renderer.ignore_tables = True
+            body = html_renderer.handle(body_html)
 
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails,
