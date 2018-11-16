@@ -697,9 +697,10 @@ class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
     our framework.
     """
 
-    def __init__(self, user):
+    def __init__(self, user, lifespan=None):
         self.user = user
         self.generator = self
+        self.lifespan = lifespan
 
     # for compatibility with Django's pw reset interface
     @classmethod
@@ -717,7 +718,10 @@ class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
         ])
 
     def get_lifespan(self):
-        return settings.PASSWORD_RESET_TIMEOUT_DAYS * 24
+        if self.lifespan is None:
+            return settings.PASSWORD_RESET_TIMEOUT_DAYS * 24
+        else:
+            return self.lifespan
 
 
 class PasswordResetTokenGenerator(AccountTokenHandler):

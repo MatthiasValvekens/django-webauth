@@ -109,8 +109,8 @@ PASSWORD_RESET_EMAIL_SUBJECT_TEMPLATE = 'mail/password_reset_subject.txt'
 PASSWORD_RESET_EMAIL_TEMPLATE = 'mail/password_reset_email.html'
 
 
-def token_context(token_generator, user):
-    token, valid_until = token_generator(user).make_token()
+def token_context(token_generator, user, **generator_kwargs):
+    token, valid_until = token_generator(user, **generator_kwargs).make_token()
     return {
         'uid': urlsafe_base64_encode(force_bytes(user.pk)).decode(),
         'user': user,
