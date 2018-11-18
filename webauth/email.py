@@ -68,16 +68,23 @@ class EmailDispatcher:
         else:
             # I'm gonna assume that h2t and beautifulsoup are not thread-safe,
             # so let's not reuse these objects
-            body_html = str(
-                BeautifulSoup(
-                    html_email, features="html.parser"
-                )
+            parsed_message = BeautifulSoup(
+                html_email, features="html.parser"
             )
+            main_html = str(parsed_message.find(id='main'))
+            footer_html = str(parsed_message.find(id='footer'))
             html_renderer = html2text.HTML2Text()
-            html_renderer.ignore_links = True
+            html_renderer.use_automatic_links = True
             html_renderer.ignore_images = True
             html_renderer.ignore_tables = True
-            body = html_renderer.handle(body_html)
+            main = html_renderer.handle(main_html)
+            footer = html_renderer.handle(footer_html)
+            body = loader.render_to_string(
+                'mail/plaintext_generic.txt', context={
+                    'content': main,
+                    'footer': footer,
+                }
+            )
 
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails,
