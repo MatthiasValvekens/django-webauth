@@ -7,93 +7,93 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-10-07 21:24+0200\n"
-"PO-Revision-Date: 2018-10-07 21:22+0200\n"
+"POT-Creation-Date: 2018-11-24 00:32+0100\n"
+"PO-Revision-Date: 2018-11-24 00:33+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: nl_BE\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 2.1.1\n"
+"X-Generator: Poedit 2.2\n"
 
-#: webauth/admin.py:16
-msgid "Sent"
-msgstr "Verzonden"
-
-#: webauth/admin.py:19
-msgid "Resend activation email"
-msgstr "Activeringsmail opnieuw versturen"
-
-#: webauth/admin.py:34
+#: admin.py:26
 msgid "Permissions"
 msgstr "Rechten"
 
-#: webauth/apps.py:6
+#: admin.py:48
+msgid "Sent"
+msgstr "Verzonden"
+
+#: admin.py:51
+msgid "Resend activation email"
+msgstr "Activeringsmail opnieuw versturen"
+
+#: apps.py:7
 msgid "WebAuth authentication layer"
 msgstr "WebAuth-authenticatielaag"
 
-#: webauth/forms.py:42
+#: forms.py:46 forms.py:76
 msgid "New email address"
 msgstr "Nieuw e-mailadres"
 
-#: webauth/forms.py:67
+#: forms.py:81
 msgid "OTP token"
 msgstr "OTP-token"
 
-#: webauth/forms.py:68
+#: forms.py:82
 msgid "OTP device"
 msgstr "OTP-toestel"
 
-#: webauth/forms.py:69
+#: forms.py:83
 msgid "OTP challenge"
 msgstr "OTP-challenge"
 
-#: webauth/models.py:147
+#: models.py:211
 msgid "An email address must be set."
 msgstr "Je moet een e-mailadres instellen."
 
-#: webauth/models.py:165
+#: models.py:229
 msgid "Superuser must have is_staff=True."
 msgstr "Superuser moet is_staff=True hebben."
 
-#: webauth/models.py:167
+#: models.py:231
 msgid "Superuser must have is_superuser=True."
 msgstr "Superuser moet is_superuser=True hebben."
 
-#: webauth/models.py:169
+#: models.py:233
 msgid "Superuser must have is_active=True."
 msgstr "Superuser moet is_active=True hebben."
 
-#: webauth/models.py:186
+#: models.py:251
 msgid "email address"
 msgstr "e-mailadres"
 
-#: webauth/models.py:190
+#: models.py:255
 msgid "A user with this email address already exists"
 msgstr "Er is al een gebruiker met dit e-mailadres"
 
-#: webauth/models.py:197
+#: models.py:262
 msgid "staff"
 msgstr "beheerder"
 
-#: webauth/models.py:199
+#: models.py:264
 msgid "Marks whether or not a user has access to the admin console."
 msgstr "Geeft aan of deze gebruiker toegang heeft tot de beheerdersconsole."
 
-#: webauth/models.py:206
+#: models.py:271
 msgid "superuser"
 msgstr "superuser"
 
-#: webauth/models.py:207
+#: models.py:272
 msgid "Marks whether or not a user has root access."
 msgstr "Geeft aan of deze gebruiker rootrechten heeft op de website."
 
-#: webauth/models.py:212
+#: models.py:277
 msgid "active"
 msgstr "actief"
 
-#: webauth/models.py:214
+#: models.py:279
 msgid ""
 "Indicates whether this account is active. Please use this setting instead of "
 "deleting accounts."
@@ -101,52 +101,60 @@ msgstr ""
 "Geeft aan of deze account actief is. Gebruik deze setting i.p.v. accounts te "
 "verwijderen."
 
-#: webauth/models.py:223
+#: models.py:288
 msgid "communication language"
 msgstr "communicatietaal"
 
-#: webauth/models.py:225
+#: models.py:290
 msgid "Controls the language of all automatically generated communication."
 msgstr "Stelt de taal in van alle automatisch gegenereerde communicatie."
 
-#: webauth/models.py:233
+#: models.py:298
 msgid "date joined"
 msgstr "toetredingsdatum"
 
-#: webauth/models.py:238
+#: models.py:303
 msgid "user"
 msgstr "gebruiker"
 
-#: webauth/models.py:239
+#: models.py:304
 msgid "users"
 msgstr "gebruikers"
 
-#: webauth/models.py:286
+#: models.py:356
 msgid "group"
 msgstr "groep"
 
-#: webauth/models.py:287
+#: models.py:357
 msgid "groups"
 msgstr "groepen"
 
-#: webauth/templatetags/webauth.py:80
+#: templatetags/webauth.py:86
 msgid "2FA required"
 msgstr "2FA verplicht"
 
-#: webauth/tokens.py:423
+#: tokens.py:451
 #, python-format
 msgid "The token %(token)s expired at %(valid_until)s."
 msgstr "Het token %(token)s is vervallen op %(valid_until)s."
 
-#: webauth/tokens.py:431
+#: tokens.py:459
 #, python-format
 msgid "The token %(token)s has expired."
 msgstr "Het token %(token)s is vervallen."
 
-#: webauth/views.py:71
+#: views.py:79
 msgid "Enter password"
 msgstr "Geef wachtwoord in"
 
-#: webauth/views.py:76
+#: views.py:85
 msgid "Account activated"
 msgstr "Account geactiveerd"
+
+#: views.py:134
+msgid ""
+"Your email address has been updated successfully. Please log in with your "
+"new credentials."
+msgstr ""
+"Je e-mailadres is met succes geüpdatet. Meld je opnieuw aan met je nieuwe "
+"adres."

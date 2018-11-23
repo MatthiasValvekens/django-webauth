@@ -26,7 +26,8 @@ urlpatterns = [
     path('activate/done/', 
          views.AccountActivatedView.as_view(), name='account_activated'),
     path('reset_email/', views.email_reset_view, name='reset_email'),
-    path('confirm_password/', 
+    path('update_email/', views.email_update_view, name='update_email'),
+    path('confirm_password/',
          views.PasswordConfirmView.as_view(), name='confirm_password'),
     path('otp_login/', views.OTPLoginView.as_view(), name='otp_login'),
 ]

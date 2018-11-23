@@ -68,6 +68,15 @@ class EmailResetForm(forms.ModelForm):
         return self.user
 
 
+class EmailUpdateForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ('email',)
+        labels = {
+            'email': _('New email address')
+        }
+
+
 otp_labels = {
     'otp_token': _('OTP token'),
     'otp_device': _('OTP device'),

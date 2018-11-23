@@ -595,8 +595,10 @@ class SessionTokenValidator(RequestTokenValidator, abc.ABC):
             )
         token = self.request.session[session_key]
         # consume the token if necessary
+        # only POST requests should trigger this
         try:
-            if self.generator_class.consume_token:
+            if self.generator_class.consume_token \
+                    and self.request.method == 'POST':
                 del self.request.session[session_key]
         except AttributeError:
             pass
@@ -739,6 +741,7 @@ class ActivationTokenGenerator(AccountTokenHandler):
 class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
 
     session_key = 'pwconfirmationtoken'
+    consume_token = False
 
     def extra_hash_data(self):
         user = self.request.user
@@ -750,6 +753,7 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
             # Probably fairly useless with cookie-backed sessions,
             # unless they are on a timer.
             str(self.request.session.session_key),
+            str(user.email),
             str(user.last_login),
             str(user.pk),
             str(user.password),

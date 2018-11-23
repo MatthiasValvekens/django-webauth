@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.urls import reverse_lazy
 from functools import partial
 from django.contrib.auth import BACKEND_SESSION_KEY, views as auth_views
@@ -11,7 +12,7 @@ from django.utils import translation
 from django.shortcuts import render, redirect
 from django.contrib.auth.mixins import UserPassesTestMixin
 
-from webauth import utils, tokens, forms
+from webauth import utils, tokens, forms, decorators
 from webauth.models import User
 
 LogoutView = auth_views.LogoutView
@@ -120,6 +121,30 @@ def email_reset_view(request):
         if request.user.is_authenticated:
             return redirect(reverse_lazy('index'))
         return render(request, 'registration/email_reset_done.html')
+
+
+@decorators.require_password_confirmation
+def email_update_view(request):
+    if request.method == 'POST':
+        form = forms.EmailUpdateForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request, _(
+                    'Your email address has been updated successfully. '
+                    'Please log in with your new credentials.'
+                )
+            )
+            return redirect(reverse_lazy('login'))
+    else:
+        form = forms.EmailUpdateForm(instance=request.user)
+    return render(
+        request,
+        'registration/email_reset.html',
+        context={
+            'form': form
+        }
+    )
 
 
 def set_language(request):
