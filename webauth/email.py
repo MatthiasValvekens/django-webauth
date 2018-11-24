@@ -139,7 +139,7 @@ class EmailDispatcher:
             for options in recipient_data:
                 email = options['email']
                 lang = options['lang']
-                context = options['context']
+                context = options.get('context', {})
                 headers = options.get('headers')
                 attachments = options.get('attachments', [])
                 the_context = dict(self.base_context)
