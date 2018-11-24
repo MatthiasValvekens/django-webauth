@@ -99,9 +99,6 @@ class EmailDispatcher:
 
         if lang is not None:
             activate(old_lang)
-        # TODO: remove this once we have proper outbound logging
-        # on the mail server
-        print(html_email)
         return message
 
     def broadcast_mail(self, *args, **kwargs):
