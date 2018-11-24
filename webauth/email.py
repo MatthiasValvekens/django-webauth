@@ -6,6 +6,10 @@ from bs4 import BeautifulSoup
 import webauth.tasks
 import html2text
 
+DEFAULT_HEADERS = {
+    'List-Unsubscribe': '<mailto:%s>' % settings.WEBAUTH_UNSUBSCRIBE_EMAIL
+}
+
 
 # TODO: make celery dependency optional in standalone webauth
 # TODO: add support for BCC and silent failure toggle
@@ -93,7 +97,7 @@ class EmailDispatcher:
 
         message = EmailMultiAlternatives(
             subject, body, self.from_email, to_emails,
-            headers=(headers or {})
+            headers=(headers or DEFAULT_HEADERS)
         )
         if html_email is not None:
             message.attach_alternative(html_email, 'text/html')
