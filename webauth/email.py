@@ -19,6 +19,11 @@ class EmailDispatcher:
                  subject_template_name, email_template_name=None,
                  lang=None, from_email=None, async=True,
                  html_email_template_name=None, base_context=None):
+        if html_email_template_name is None and email_template_name is None:
+            raise ValueError(
+                'html_email_template_name and email_template_name '
+                'cannot both be None'
+            )
         self.subject_template_name = subject_template_name
         self.email_template_name = email_template_name
         self.lang = lang
@@ -149,8 +154,9 @@ def dispatch_email(subject_template_name, email_template_name,
                    to_email, lang=None, from_email=None,
                    html_email_template_name=None, **kwargs):
     dispatcher = EmailDispatcher(
-        subject_template_name, email_template_name,
-        lang, from_email, html_email_template_name
+        subject_template_name, email_template_name=email_template_name,
+        lang=lang, from_email=from_email,
+        html_email_template_name=html_email_template_name
     )
 
     context = kwargs.pop('context', {})

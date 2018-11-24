@@ -329,7 +329,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         context = kwargs.pop('context', {})
         context['user'] = self
         kwargs['context'] = context
-        email = self.email if full_name is not None else utils.named_email(
+        email = self.email if full_name is None else utils.named_email(
             full_name, self.email
         )
         dispatch_email(
