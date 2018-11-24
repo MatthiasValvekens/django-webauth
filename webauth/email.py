@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import webauth.tasks
 import html2text
 
-DEFAULT_HEADERS = {
+UNSUBSCRIBE_HEADERS = {
     'List-Unsubscribe': '<mailto:%s>' % settings.WEBAUTH_UNSUBSCRIBE_EMAIL
 }
 
@@ -21,7 +21,7 @@ class EmailDispatcher:
 
     def __init__(self,
                  subject_template_name, email_template_name=None,
-                 lang=None, from_email=None, async=True,
+                 lang=None, from_email=None, async=True, suppress_unsub=False,
                  html_email_template_name=None, base_context=None):
         if html_email_template_name is None and email_template_name is None:
             raise ValueError(
@@ -35,6 +35,7 @@ class EmailDispatcher:
         self.html_email_template_name = html_email_template_name
         self.base_context = {} if base_context is None else base_context
         self.async = async
+        self.suppress_unsub = suppress_unsub
 
     def make_broadcast_mail(self, to_emails, lang=None, extra_context=None,
                             attachments=None, headers=None):
@@ -95,10 +96,13 @@ class EmailDispatcher:
                 }
             )
 
+        if not headers:
+            headers = {} if self.suppress_unsub else UNSUBSCRIBE_HEADERS
+
         message = EmailMultiAlternatives(
-            subject, body, self.from_email, to_emails,
-            headers=(headers or DEFAULT_HEADERS)
+            subject, body, self.from_email, to_emails, headers=headers
         )
+
         if html_email is not None:
             message.attach_alternative(html_email, 'text/html')
 
@@ -157,9 +161,12 @@ class EmailDispatcher:
 def dispatch_email(subject_template_name, email_template_name,
                    to_email, lang=None, from_email=None,
                    html_email_template_name=None, **kwargs):
+    # this thing is never called as part of a mailing list,
+    # so default is true for this function
+    suppress_unsub = kwargs.pop('suppress_unsub', True)
     dispatcher = EmailDispatcher(
         subject_template_name, email_template_name=email_template_name,
-        lang=lang, from_email=from_email,
+        lang=lang, from_email=from_email, suppress_unsub=suppress_unsub,
         html_email_template_name=html_email_template_name
     )
 
