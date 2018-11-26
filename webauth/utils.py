@@ -63,3 +63,10 @@ def named_email(name, email):
         name.replace('\n', ''),
         email
     )
+
+
+# slice a list into chunks of even size
+# https://stackoverflow.com/q/312443/4355619
+def chunks(lst, size):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]

@@ -24,7 +24,17 @@ def send_mail(message):
 
 @shared_task
 def send_mails(messages):
+    from webauth.utils import chunks
+    from django.conf import settings
+    batch_size = settings.WEBAUTH_MASS_MAIL_BATCH_SIZE
+    batches = chunks(messages, batch_size)
     with mail.get_connection() as conn:
-        conn.send_messages(messages)
-    msgs = LOGGING_SEPARATOR.join(msg_to_string(m) for m in messages)
-    mail_audit_log.info('Dispatched messages:\n%s' % msgs)
+        for ix, batch in enumerate(batches):
+            conn.send_messages(batch)
+            msgs = LOGGING_SEPARATOR.join(msg_to_string(m) for m in batch)
+            mail_audit_log.info(
+                'Dispatched messages [batch %d, msgs %d through %d]:\n%s' % (
+                    ix + 1, ix * batch_size + 1, ix * batch_size + len(batch),
+                    msgs
+                )
+            )
