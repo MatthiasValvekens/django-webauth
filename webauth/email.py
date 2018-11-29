@@ -7,7 +7,9 @@ import webauth.tasks
 import html2text
 
 UNSUBSCRIBE_HEADERS = {
-    'List-Unsubscribe': '<mailto:%s>' % settings.WEBAUTH_UNSUBSCRIBE_EMAIL
+    'List-Unsubscribe': '<mailto:%s?subject=unsubscribe>' % (
+        settings.WEBAUTH_UNSUBSCRIBE_EMAIL
+    )
 }
 
 
@@ -37,8 +39,8 @@ class EmailDispatcher:
         self.async = async
         self.suppress_unsub = suppress_unsub
 
-    def make_broadcast_mail(self, to_emails, lang=None, extra_context=None,
-                            attachments=None, headers=None):
+    def build_broadcast_mail(self, to_emails, lang=None, extra_context=None,
+                             attachments=None, headers=None):
         """
         Send the exact same email to multiple recipients, who 
         will all be included in the to-field.
@@ -116,7 +118,7 @@ class EmailDispatcher:
 
     def broadcast_mail(self, *args, **kwargs):
         async = kwargs.pop('async', self.async)
-        message = self.make_broadcast_mail(*args, **kwargs)
+        message = self.build_broadcast_mail(*args, **kwargs)
         if async:
             webauth.tasks.send_mail.delay(message)
         else:
@@ -125,37 +127,46 @@ class EmailDispatcher:
     def send_mail(self, to_email, **kwargs):
         self.broadcast_mail([to_email], **kwargs)
 
-    def send_dynamic_emails(self, recipient_data, **kwargs):
+    def build_dynamic_emails(self, recipient_data, extra_context=None):
+        extra_context = extra_context or {}
+
+        for options in recipient_data:
+            email = options['email']
+            lang = options['lang']
+            context = options.get('context', {})
+            headers = options.get('headers')
+            attachments = options.get('attachments', [])
+            the_context = dict(self.base_context)
+            the_context.update(extra_context)
+            the_context.update(context)
+            yield self.build_broadcast_mail(
+                [email], lang=lang,
+                extra_context=the_context,
+                attachments=attachments,
+                headers=headers
+            )
+
+    def send_dynamic_emails(self, recipient_data,
+                            extra_context=None, async=None):
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
         Entries of recipient_data should be a dict with at least the keys
         'email', 'lang' and 'context'
         """
-        extra_context = kwargs.pop('extra_context', {})
-        async = kwargs.pop('async', self.async)
 
-        def message_list():
-            for options in recipient_data:
-                email = options['email']
-                lang = options['lang']
-                context = options.get('context', {})
-                headers = options.get('headers')
-                attachments = options.get('attachments', [])
-                the_context = dict(self.base_context)
-                the_context.update(extra_context)
-                the_context.update(context)
-                yield self.make_broadcast_mail(
-                    [email], lang=lang,
-                    extra_context=the_context,
-                    attachments=attachments,
-                    headers=headers
-                )
+        message_list = list(
+            self.build_dynamic_emails(
+                recipient_data, extra_context=extra_context
+            )
+        )
+
+        async = async or self.async
 
         if async:
-            webauth.tasks.send_mails.delay(list(message_list()))
+            webauth.tasks.send_mails.delay(message_list)
         else:
-            webauth.tasks.send_mails(list(message_list()))
+            webauth.tasks.send_mails(message_list)
 
 
 def dispatch_email(subject_template_name, email_template_name,

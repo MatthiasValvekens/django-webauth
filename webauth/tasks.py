@@ -1,7 +1,10 @@
 from __future__ import absolute_import, unicode_literals
 import logging
+import random
+import re
 from celery import shared_task
 from django.core import mail
+from collections import defaultdict
 
 mail_audit_log = logging.getLogger(__name__ + '.send_mail')
 LOGGING_SEPARATOR = '\n>>>>>%s<<<<<\n\n' % ('=' * 24)
@@ -19,7 +22,7 @@ def msg_to_string(msg):
 @shared_task
 def send_mail(message):
     message.send()
-    mail_audit_log.info('Dispatched message:\n%s' % msg_to_string(message))
+    mail_audit_log.info('Dispatched message:\n%s', msg_to_string(message))
 
 
 @shared_task
@@ -31,10 +34,71 @@ def send_mails(messages):
     with mail.get_connection() as conn:
         for ix, batch in enumerate(batches):
             conn.send_messages(batch)
-            msgs = LOGGING_SEPARATOR.join(msg_to_string(m) for m in batch)
             mail_audit_log.info(
-                'Dispatched messages [batch %d, msgs %d through %d]:\n%s' % (
-                    ix + 1, ix * batch_size + 1, ix * batch_size + len(batch),
-                    msgs
-                )
+                'Dispatched messages [batch %d, msgs %d through %d].',
+                ix + 1, ix * batch_size + 1, ix * batch_size + len(batch)
             )
+            mail_audit_log.debug(
+                'Dispatched message content:\n%s',
+                LOGGING_SEPARATOR.join(msg_to_string(m) for m in batch)
+            )
+
+
+TO_FIELD = re.compile('.*? <(.*)>$')
+
+
+@shared_task
+def send_emails_domain_rled(messages):
+    # ensure that every message only has one recipient for optimal
+    # queueing
+    per_domain_queues = defaultdict(list)
+    for msg in messages:
+        m = TO_FIELD.match(msg.to[0].strip())
+        if m is None:
+            domain = 'unknown'
+        else:
+            hd, domain = m.group(1).strip().rsplit('@', 1)
+        per_domain_queues[domain.lower()].append(msg)
+
+    for domain, queue in per_domain_queues.items():
+        _email_staggered_delivery.delay(queue, domain)
+
+
+# apply 15% uniform noise to sending delays
+def fuzz(mean_delay):
+    fuzz_range = int(mean_delay * 0.15)
+    return mean_delay + random.randint(-fuzz_range, fuzz_range)
+
+
+@shared_task
+def _email_staggered_delivery(messages, domain):
+    from django.conf import settings
+    num = settings.WEBAUTH_CONCURRENT_DOMAIN_BATCH_SIZE
+    delay = fuzz(settings.WEBAUTH_CONCURRENT_DOMAIN_MEAN_BATCH_DELAY)
+    send_now = messages[:num]
+    send_later = messages[num:]
+    with mail.get_connection() as conn:
+        conn.send_messages(send_now)
+
+    mail_audit_log.info(
+        'Dispatched %d messages to domain %s. %d messages '
+        'remaining in queue for this domain. ',
+        len(send_now), domain, len(send_later)
+    )
+    # TODO: lazify this
+    msgs = LOGGING_SEPARATOR.join(msg_to_string(m) for m in send_now)
+    mail_audit_log.debug(
+        'Content of messages sent to domain %s:\n%s',
+        domain, msgs
+    )
+
+    if send_later:
+        _email_staggered_delivery.apply_async(
+            (send_later, domain), countdown=delay
+        )
+        mail_audit_log.info(
+            'Next batch for domain %s scheduled %d seconds from now. ',
+            domain, delay
+        )
+
+
