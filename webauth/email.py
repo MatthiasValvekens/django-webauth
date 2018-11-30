@@ -95,6 +95,8 @@ class EmailDispatcher:
                 'mail/plaintext_generic.txt', context={
                     'content': main,
                     'footer': footer,
+                    'protocol': settings.PROTOCOL,
+                    'domain': settings.DOMAIN
                 }
             )
 

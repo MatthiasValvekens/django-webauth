@@ -19,6 +19,14 @@ def msg_to_string(msg):
     return mbytes.decode(output_charset)
 
 
+class LazyMsgLog:
+    def __init__(self, msgs):
+        self.msgs = msgs
+
+    def __str__(self):
+        return LOGGING_SEPARATOR.join(msg_to_string(m) for m in self.msgs)
+
+
 @shared_task
 def send_mail(message):
     message.send()
@@ -39,8 +47,7 @@ def send_mails(messages):
                 ix + 1, ix * batch_size + 1, ix * batch_size + len(batch)
             )
             mail_audit_log.debug(
-                'Dispatched message content:\n%s',
-                LOGGING_SEPARATOR.join(msg_to_string(m) for m in batch)
+                'Dispatched message content:\n%s', LazyMsgLog(batch)
             )
 
 
@@ -85,11 +92,9 @@ def _email_staggered_delivery(messages, domain):
         'remaining in queue for this domain. ',
         len(send_now), domain, len(send_later)
     )
-    # TODO: lazify this
-    msgs = LOGGING_SEPARATOR.join(msg_to_string(m) for m in send_now)
     mail_audit_log.debug(
         'Content of messages sent to domain %s:\n%s',
-        domain, msgs
+        domain, LazyMsgLog(send_now)
     )
 
     if send_later:
