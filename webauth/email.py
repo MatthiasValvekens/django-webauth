@@ -23,7 +23,7 @@ class EmailDispatcher:
 
     def __init__(self,
                  subject_template_name, email_template_name=None,
-                 lang=None, from_email=None, async=True, suppress_unsub=False,
+                 lang=None, from_email=None, fork=True, suppress_unsub=False,
                  html_email_template_name=None, base_context=None):
         if html_email_template_name is None and email_template_name is None:
             raise ValueError(
@@ -36,7 +36,7 @@ class EmailDispatcher:
         self.from_email = from_email
         self.html_email_template_name = html_email_template_name
         self.base_context = {} if base_context is None else base_context
-        self.async = async
+        self.fork = fork
         self.suppress_unsub = suppress_unsub
 
     def build_broadcast_mail(self, to_emails, lang=None, extra_context=None,
@@ -121,9 +121,9 @@ class EmailDispatcher:
         return message
 
     def broadcast_mail(self, *args, **kwargs):
-        async = kwargs.pop('async', self.async)
+        fork = kwargs.pop('fork', self.fork)
         message = self.build_broadcast_mail(*args, **kwargs)
-        if async:
+        if fork:
             webauth.tasks.send_mail.delay(message)
         else:
             message.send(message)
@@ -151,7 +151,7 @@ class EmailDispatcher:
             )
 
     def send_dynamic_emails(self, recipient_data,
-                            extra_context=None, async=None):
+                            extra_context=None, fork=None):
         """
         Send an email to multiple recipients, with context depending on the 
         recipient in question.
@@ -165,9 +165,9 @@ class EmailDispatcher:
             )
         )
 
-        async = async or self.async
+        fork = fork or self.fork
 
-        if async:
+        if fork:
             webauth.tasks.send_mails.delay(message_list)
         else:
             webauth.tasks.send_mails(message_list)
