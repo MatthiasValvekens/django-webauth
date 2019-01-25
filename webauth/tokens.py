@@ -1,5 +1,6 @@
 import datetime
 import abc
+import re
 from functools import wraps
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, Http404
@@ -134,6 +135,8 @@ class TimeBasedTokenGenerator:
     secret = settings.SECRET_KEY
     lifespan = 0
     validator = None
+
+    TBTG_TOKEN_REGEX = re.compile(r'(\d+)-([a-z0-9]+)-[a-f0-9]{20}')
 
     def __new__(cls, *args, **kwargs):
         if cls is TimeBasedTokenGenerator:
