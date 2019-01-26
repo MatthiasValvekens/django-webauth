@@ -2,6 +2,8 @@ import datetime
 import abc
 import re
 from functools import wraps
+from typing import Type
+
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, Http404
 from django.utils.http import base36_to_int, int_to_base36
@@ -134,7 +136,7 @@ class TimeBasedTokenGenerator:
 
     secret = settings.SECRET_KEY
     lifespan = 0
-    validator = None
+    validator: Type['TimeBasedTokenValidator'] = None
 
     TBTG_TOKEN_REGEX = re.compile(r'(\d+)-([a-z0-9]+)-[a-f0-9]{20}')
 
@@ -192,6 +194,8 @@ class TimeBasedTokenGenerator:
             kwargs = cls.get_constructor_kwargs(
                 request, view_args, view_kwargs, view_instance
             )
+
+            # noinspection PyArgumentList
             return cls(**kwargs)
         except TypeError:
             raise TypeError(
@@ -308,8 +312,13 @@ class TimeBasedTokenValidator(TokenValidator):
     Validate tokens from a :class:`TimeBasedTokenGenerator`.
     """
 
-    generator = None
-     
+    generator: TimeBasedTokenGenerator = None
+    generator_class: Type[TimeBasedTokenGenerator] = None
+
+    def __init__(self, generator_kwargs=None, **kwargs):
+        self.generator_kwargs = generator_kwargs or {}
+        super().__init__(**kwargs)
+
     def get_generator(self):
         """
         Fetch the generator to obtain tokens from.
@@ -329,9 +338,26 @@ class TimeBasedTokenValidator(TokenValidator):
 
         :rtype: TimeBasedTokenGenerator
         """
-        try:
-            return self.generator 
-        except AttributeError:
+        gen = self.generator
+        if gen is None:
+            gen = self.generator = self.instantiate_generator()
+            if gen is None:
+                raise TypeError('Could not instantiate generator.')
+
+        return gen
+
+
+    def instantiate_generator(self):
+        """
+        Attempt to instantiate a generator.
+        Only called if ``self.generator`` is None.
+        The default implementation attempts to call ``self.generator_class``
+        with ``self.generator_kwargs``, but subclasses are free to change that.
+        """
+
+        if self.generator_class is not None:
+            return self.generator_class(**self.generator_kwargs)
+        else:
             return None
 
     def parse_token(self, token):
@@ -534,8 +560,8 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
                 return wrapped_view(*view_args, **view_kwargs)
 
         return Mixin
-    
-    def __init__(self, request, view_args=None, view_kwargs=None,
+
+    def __init__(self, *, request, view_args=None, view_kwargs=None,
                  view_instance=None, **kwargs):
         self.request = request
         self.view_args = view_args
@@ -546,32 +572,11 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
 
 
 class TimeBasedRequestTokenValidator(
-        TimeBasedTokenValidator,
         RequestTokenValidator,
+        TimeBasedTokenValidator,
         abc.ABC):
 
-    def get_generator(self):
-        """
-        Fetch the generator to obtain tokens from.
-        The default implementation requires that either
-        ``self.generator`` or ``self.generator_class``
-        be defined.
-
-        If ``self.generator`` is specified, the value of this
-        instance attribute is used.
-        If not, this method looks for ``self.generator_class``
-        and attempts to call its :func:`from_view_data` method.
-
-        By default, subclasses of :class:`TimeBasedTokenGenerator`
-        make sure that their respective `validator` class attributes
-        come with the right fields to make this work out of the box.
-
-        :rtype: TimeBasedTokenGenerator
-        """
-        generator = super().get_generator()
-        if generator is not None:
-            return generator
-
+    def instantiate_generator(self):
         gen_class = self.generator_class
 
         return gen_class.from_view_data(
@@ -680,7 +685,7 @@ class TimeBasedSessionTokenGenerator(
 class TimeBasedDBUrlTokenValidator(
         DBUrlTokenValidator, TimeBasedTokenValidator):
 
-    def get_generator(self):
+    def instantiate_generator(self):
         # instantiate a generator using the object we have
         return self.generator_class(self.get_object())
 
@@ -703,6 +708,7 @@ class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
     """
 
     def __init__(self, user, lifespan=None):
+        super().__init__()
         self.user = user
         self.generator = self
         self.lifespan = lifespan
