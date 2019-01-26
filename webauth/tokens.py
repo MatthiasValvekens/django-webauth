@@ -653,7 +653,7 @@ class TimeBasedSessionTokenValidator(
 class TimeBasedUrlTokenGenerator(
         TimeBasedTokenGenerator,
         validator_base=TimeBasedUrlTokenValidator):
-    pass
+    validator: Type[TimeBasedUrlTokenValidator]
 
 
 class TimeBasedSessionTokenGenerator(
@@ -661,6 +661,7 @@ class TimeBasedSessionTokenGenerator(
         validator_base=TimeBasedSessionTokenValidator):
 
     consume_token = True
+    validator: Type[TimeBasedSessionTokenValidator]
     
     @classmethod
     def from_view_data(cls, request, *_args, **_kwargs):
@@ -697,7 +698,7 @@ class ObjectDBUrlTokenValidator(DBUrlTokenValidator, ObjectTokenValidator):
 class TimeBasedDBUrlTokenGenerator(
         TimeBasedTokenGenerator,
         validator_base=TimeBasedDBUrlTokenValidator):
-    pass
+    validator: Type[TimeBasedDBUrlTokenValidator]
 
 
 class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
