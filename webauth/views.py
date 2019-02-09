@@ -94,8 +94,8 @@ def unlock_account_view(request, uidb64, token):
             User.DoesNotExist, ValidationError):
         raise SuspiciousOperation()
 
-    tg = tokens.UnlockTokenGenerator.validator
-    if tg.check_token(user, token):
+    tg = tokens.UnlockTokenGenerator.validator(user)
+    if tg.validate_token(token):
         user.is_active = True
         user.save()
         validlink = True

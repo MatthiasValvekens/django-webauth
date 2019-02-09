@@ -3,6 +3,7 @@ from functools import partial
 
 from django.db import models
 from django.conf import settings
+from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
 from django.utils.encoding import force_bytes
@@ -338,6 +339,15 @@ class User(AbstractBaseUser, PermissionsMixin):
             to_email=email, lang=self.lang,
             **kwargs
         )
+
+    # useful for displaying outside of emails
+    def get_activation_link(self):
+        token = tokens.ActivationTokenGenerator(self)
+        return reverse('activate_account', kwargs={
+            'uidb64': urlsafe_base64_encode(force_bytes(self.pk)).decode(),
+            'token': token.bare_token(),
+        })
+
 
     def send_activation_email(self, *args, **kwargs): 
         send_activation_email([self], *args, **kwargs)
