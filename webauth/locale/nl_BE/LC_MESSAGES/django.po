@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2018-11-24 00:32+0100\n"
-"PO-Revision-Date: 2018-11-24 00:33+0100\n"
+"PO-Revision-Date: 2019-02-15 21:43+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: nl_BE\n"
@@ -26,8 +26,8 @@ msgid "Sent"
 msgstr "Verzonden"
 
 #: admin.py:51
-msgid "Resend activation email"
-msgstr "Activeringsmail opnieuw versturen"
+msgid "(Re)send activation email"
+msgstr "Activeringsmail (opnieuw) versturen"
 
 #: apps.py:7
 msgid "WebAuth authentication layer"

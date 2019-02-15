@@ -48,7 +48,7 @@ class UserAdmin(BaseUserAdmin):
             request, _('Sent')
         )
         
-    resend_activation_email.short_description = _('Resend activation email')
+    resend_activation_email.short_description = _('(Re)send activation email')
         
     def has_change_permission(self, request, obj=None):
         # Only superusers can edit superusers, but we allow them
@@ -72,11 +72,6 @@ class UserAdmin(BaseUserAdmin):
         if not request.user.has_perm('auth.change_group'):
             rof.append('groups')
         return rof
-
-    def save_model(self, request, obj, form, change, **kwargs):
-        super(UserAdmin, self).save_model(request, obj, form, change)
-        if not change:
-            obj.send_activation_email()
 
     def _add_view(self, request, form_url='', extra_context=None):
         if extra_context is None:
