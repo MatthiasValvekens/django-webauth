@@ -356,7 +356,14 @@ class TimeBasedTokenValidator(TokenValidator):
         """
 
         if self.generator_class is not None:
-            return self.generator_class(**self.generator_kwargs)
+            try:
+                return self.generator_class(**self.generator_kwargs)
+            except KeyError as e:
+                raise TypeError(
+                    'Could not instantiate generator from kwargs %s' % (
+                        self.generator_kwargs
+                    ), e
+                )
         else:
             return None
 
@@ -578,11 +585,15 @@ class TimeBasedRequestTokenValidator(
 
     def instantiate_generator(self):
         gen_class = self.generator_class
-
-        return gen_class.from_view_data(
-            self.request, self.view_args, self.view_kwargs,
-            self.view_instance
-        )
+        try:
+            return gen_class.from_view_data(
+                self.request, self.view_args, self.view_kwargs,
+                self.view_instance
+            )
+        except KeyError as e:
+            raise TypeError(
+                'Could not instantiate generator from view data.', e
+            )
 
 
 class UrlTokenValidator(RequestTokenValidator, abc.ABC):
