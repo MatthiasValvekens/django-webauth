@@ -521,9 +521,7 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
                     view_kwargs=view_kwargs,
                     view_instance=view_instance
                 )
-                return validator.handle_token(
-                    _view_func, **kwargs
-                )
+                return validator.handle_token(_view_func, **kwargs)
             return _wrapped_view
 
         if view_func is None:
@@ -537,7 +535,7 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
     
     # TODO: put examples from lukweb in docs
     @classmethod
-    def as_mixin(cls, **mixin_kwargs):
+    def as_mixin(cls, pass_token=True, pass_valid_until=False, **mixin_kwargs):
         """
         Returns a view mixin that takes care of token enforcement.
         All kwargs are passed to the :dec:`enforce_token` decorator, and we 
@@ -545,19 +543,24 @@ class RequestTokenValidator(TokenValidator, abc.ABC):
         Unless forced otherwise, this also sets the valid_until and 
         token attributes on the view class.
         """
-        # since we control the class here, we can safely
-        # default these to yes
-        decorator_kwargs = {
-            'pass_valid_until': True,
-            'pass_token': True,
-        }
-        decorator_kwargs.update(mixin_kwargs)
+        decorator_kwargs = mixin_kwargs.copy()
+        # we force these to be true, our mixin handles these kwargs anyway
+        # the true handler for these conditions is in our CBV-specific
+        # dispatch wrapper
+        decorator_kwargs['pass_valid_until'] = True
+        decorator_kwargs['pass_token'] = True
 
         class Mixin(View):
             def dispatch(self, *view_args, **view_kwargs):
                 def _dispatch(*args, valid_until=None, token=None, **kwargs):
                     self.valid_until = valid_until
                     self.token = token
+                    if pass_token:
+                        kwargs['token'] = token
+                    elif pass_valid_until:
+                        kwargs['valid_until'] = valid_until
+                    # update kwargs on view object
+                    self.kwargs = kwargs
                     # python MRO magic takes care of the rest
                     return super(Mixin, self).dispatch(*args, **kwargs)
                 # pass the view instance too
