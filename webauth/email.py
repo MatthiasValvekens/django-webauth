@@ -68,15 +68,14 @@ class EmailDispatcher:
             activate(lang)
 
         html_email = None
-        parsed_message = None
+        raw_html_email = None
         if self.html_email_template_name is not None:
+            import htmlmin
             raw_html_email = loader.render_to_string(
                 self.html_email_template_name, context
             )
-            parsed_message = BeautifulSoup(
-                raw_html_email, features="html.parser"
-            )
-            html_email = parsed_message.prettify()
+            # Django automagically handles long lines
+            html_email = htmlmin.minify(raw_html_email, remove_comments=True)
 
         subject = loader.render_to_string(self.subject_template_name, context)
         # remove newlines
@@ -85,6 +84,9 @@ class EmailDispatcher:
         if self.email_template_name is not None:
             body = loader.render_to_string(self.email_template_name, context)
         else:
+            parsed_message = BeautifulSoup(
+                raw_html_email, features="html.parser"
+            )
             main_html = str(parsed_message.find(id='main'))
             footer_html = str(parsed_message.find(id='footer'))
             html_renderer = html2text.HTML2Text()
