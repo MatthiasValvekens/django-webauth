@@ -54,8 +54,8 @@ def mass_translated_email(
                         continue
                 except Exception as e:
                     logger.error(
-                        'Context construction for object %s' 
-                        'failed.' % str(user), e
+                        'Context construction for object %s ' 
+                        'failed.' % str(user), exc_info=1
                     )
                     if allow_partial_send:
                         continue
@@ -78,8 +78,8 @@ def mass_translated_email(
                         continue
                 except Exception as e:
                     logger.error(
-                        'Attachment construction for object %s'
-                        'failed.' % str(user), e
+                        'Attachment construction for object %s '
+                        'failed.' % str(user), exc_info=1
                     )
                     if allow_partial_send:
                         continue
@@ -113,7 +113,7 @@ PASSWORD_RESET_EMAIL_TEMPLATE = 'mail/password_reset_email.html'
 def token_context(token_generator, user, **generator_kwargs):
     token, valid_until = token_generator(user, **generator_kwargs).make_token()
     return {
-        'uid': urlsafe_base64_encode(force_bytes(user.pk)).decode(),
+        'uid': urlsafe_base64_encode(force_bytes(user.pk)),
         'user': user,
         'token': token,
         'valid_until': valid_until
@@ -344,7 +344,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_activation_link(self):
         token = tokens.ActivationTokenGenerator(self)
         return reverse('activate_account', kwargs={
-            'uidb64': urlsafe_base64_encode(force_bytes(self.pk)).decode(),
+            'uidb64': urlsafe_base64_encode(force_bytes(self.pk)),
             'token': token.bare_token(),
         })
 
