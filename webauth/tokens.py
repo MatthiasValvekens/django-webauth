@@ -13,6 +13,8 @@ from django.conf import settings
 from django.views import View
 from django.views.generic.detail import SingleObjectMixin
 
+# FIXME: naming inconsistency: XXX.validator is a class, while XXX.generator
+#  is an instance
 
 class TokenValidator(abc.ABC):
     """Base class for all token validators."""
@@ -304,7 +306,7 @@ class TimeBasedTokenGenerator:
 
     @classmethod
     def current_time(cls):
-        return datetime.datetime.now().replace(
+        return datetime.datetime.utcnow().replace(
             minute=0, second=0, microsecond=0
         )
 
