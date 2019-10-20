@@ -161,31 +161,33 @@ class TimeBasedTokenGenerator:
             cls.key_salt = cls.__name__
 
         if 'validator' not in cls.__dict__:
+            if issubclass(cls, TimeBasedTokenValidator):
+                # in this scenario, the generator and validator
+                # are one and the same, so this makes sense
+                # as a default.
+                # We don't even attempt to subclass
+                cls.validator = cls
+                return
             if validator_base is None:
                 # see if we can find a validator somewhere 
                 # in the superclasses because __init_subclass__
                 # kwargs are not inherited
-                for parent in cls.__mro__[1:]:
-                    if issubclass(parent, TimeBasedTokenValidator):
-                        # in this scenario, the generator and validator
-                        # are one and the same, so this makes sense
-                        # as a default.
-                        # We don't even attempt to subclass
-                        cls.validator = cls
-                        return
+                for ancestor in cls.__mro__[1:]:
                     try:
-                        validator_base = parent.validator
+                        validator_base = ancestor.validator
                         break
                     except AttributeError:
                         continue
             # if validator_base is still None, we take 
             # the most basic one available
             validator_base = validator_base or TimeBasedTokenValidator
-            cls.validator = type(
+            validator = type(
                 'ValidatorFrom' + cls.__name__,
                 (validator_base,),
                 {'generator_class': cls}
             )
+            assert issubclass(validator, TimeBasedTokenValidator)
+            cls.validator = validator
 
     @classmethod
     def from_view_data(cls, request, view_args=None,
@@ -319,7 +321,7 @@ class TimeBasedTokenValidator(TokenValidator):
         self.generator_kwargs = generator_kwargs or {}
         super().__init__(**kwargs)
 
-    def get_generator(self):
+    def get_generator(self) -> TimeBasedTokenGenerator:
         """
         Fetch the generator to obtain tokens from.
         The default implementation requires that either 
@@ -332,17 +334,25 @@ class TimeBasedTokenValidator(TokenValidator):
         and attempts to call its :func:`from_view_data` method.
         Failing that, the no-arguments constructor is called.
 
+        If this object is itself a `TimeBasedTokenGenerator`,
+        this method will return `self` unless `self.generator` is specified.
+        In this case, the `self.generator_class` attribute will always be
+        ignored.
+
         By default, subclasses of :class:`TimeBasedTokenGenerator`
         make sure that their respective `validator` class attributes
         come with the right fields to make this work out of the box.
 
         :rtype: TimeBasedTokenGenerator
         """
+
         gen = self.generator
         if gen is None:
+            if isinstance(self, TimeBasedTokenGenerator):
+                return self
             gen = self.generator = self.instantiate_generator()
-            if gen is None:
-                raise TypeError('Could not instantiate generator.')
+            if gen is None or not isinstance(gen, TimeBasedTokenGenerator):
+                raise TypeError('Could not get hold of a generator instance.')
 
         return gen
 
@@ -725,7 +735,6 @@ class AccountTokenHandler(TimeBasedTokenGenerator, TimeBasedTokenValidator):
     def __init__(self, user, lifespan=None):
         super().__init__()
         self.user = user
-        self.generator = self
         self.lifespan = lifespan
 
     # for compatibility with Django's pw reset interface
