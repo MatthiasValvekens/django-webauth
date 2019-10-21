@@ -216,6 +216,7 @@ class TimeBasedTokenGenerator:
     def make_token(self):
         """
         :returns: a token and the timestamp when it expires.
+        The token will match the regex `[0-9]+-[a-z0-9]+-[0-9a-f]+`
         :rtype: str, datetime.datetime
         """
         return self._make_token_with_timestamp(
