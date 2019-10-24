@@ -581,20 +581,6 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
 
         return Mixin
 
-    def instantiate_generator(self):
-        gen_class = self.generator_class
-        assert issubclass(gen_class, TokenGeneratorRequestMixin)
-        try:
-            kwargs = gen_class.get_constructor_kwargs(
-                request=self.request, view_kwargs=self.view_kwargs,
-                view_instance=self.view_instance
-            )
-            return gen_class(**kwargs)
-        except (KeyError, TypeError) as e:
-            raise TypeError(
-                'Could not instantiate generator from view data.', e
-            )
-
 
 class TimeBasedRequestTokenValidator(
         RequestTokenValidator,
@@ -658,6 +644,25 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
 
     def get_token(self):
         return self.view_kwargs['token']
+
+    def instantiate_generator(self):
+        gen_class = self.generator_class
+        assert issubclass(gen_class, TokenGeneratorRequestMixin)
+        view_kwargs = dict(self.view_kwargs)
+        try:
+            del view_kwargs['token']
+        except KeyError:
+            pass
+        try:
+            kwargs = gen_class.get_constructor_kwargs(
+                request=self.request, view_kwargs=view_kwargs,
+                view_instance=self.view_instance
+            )
+            return gen_class(**kwargs)
+        except (KeyError, TypeError) as e:
+            raise TypeError(
+                'Could not instantiate generator from view data.', e
+            )
 
 
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
@@ -844,6 +849,10 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         # Regardless, the token is session-bound, so it will expire
         # along with the session.
         return 1
+
+    @classmethod
+    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+        return {}
 
 
 class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator):
