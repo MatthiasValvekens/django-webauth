@@ -216,7 +216,7 @@ class TimeBasedTokenGenerator:
     def make_token(self):
         """
         :returns: a token and the timestamp when it expires.
-        The token will match the regex `[0-9]+-[a-z0-9]+-[0-9a-f]+`
+        The token will match the regex `[0-9]+-[a-z0-9]+-[0-9a-f]{20}`
         :rtype: str, datetime.datetime
         """
         return self._make_token_with_timestamp(
@@ -253,6 +253,7 @@ class TimeBasedTokenGenerator:
             str(lifespan) + str(timestamp) + str(self.extra_hash_data()),
             secret=self.secret,
         ).hexdigest()[::2]
+        assert len(token_hash) == 20
         token = "%s-%s-%s" % (lifespan, ts_b36, token_hash)
         if lifespan:
             expiry_ts = lifespan + timestamp
