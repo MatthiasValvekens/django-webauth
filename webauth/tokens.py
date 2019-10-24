@@ -21,7 +21,7 @@ class TokenValidator(abc.ABC):
 
     VALID_TOKEN = 1
     MALFORMED_TOKEN = 2
-    EXPIRED_TOKEN = 3
+    EXPIRED_TOKEN = 3  # FIXME: this belongs in TimeBasedTokenValidator?
 
     @abc.abstractmethod
     def parse_token(self, token):
@@ -802,3 +802,60 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         # Regardless, the token is session-bound, so it will expire
         # along with the session.
         return 1
+
+
+# TODO: food for thought, can we abstract away the logic that this thing
+#  has in common with TimeBasedTokenGenerator?
+#  Regardless, a rework of the base classes in this module seems in order
+class SignedSerialTokenGenerator(TokenValidator):
+    """
+    Generate tokens that do not depend on any timestamps.
+    Intended to tie primary keys (or any serial number) to a specific
+    server/model. The result should be reproducible and independent of
+    environmental factors.
+    """
+
+    secret = settings.SECRET_KEY
+
+    def parse_token(self, token):
+        try:
+            serial, token_hash = token.split("-")
+            serial = int(serial)
+        except ValueError:
+            return self.MALFORMED_TOKEN, None
+
+        if serial != self.serial:
+            return self.MALFORMED_TOKEN, None
+
+        if constant_time_compare(self.make_token(), token):
+            return self.VALID_TOKEN, None
+        else:
+            return self.MALFORMED_TOKEN, None
+
+    def __new__(cls, *args, **kwargs):
+        if cls is SignedSerialTokenGenerator:
+            raise TypeError(
+                'SignedSerialTokenGenerator must be subclassed'
+            )
+        return super().__new__(cls)  # throw away args
+
+    def __init_subclass__(cls, **kwargs):
+        if 'key_salt' not in cls.__dict__:
+            cls.key_salt = cls.__name__
+        super().__init_subclass__(**kwargs)
+
+    def __init__(self, serial: int):
+        self.validator = self # just to make the API consistent
+        self.serial = serial
+
+    def extra_hash_data(self):
+        return ''
+
+    def make_token(self):
+        token_hash = salted_hmac(
+            self.key_salt,
+            str(self.serial) + str(self.extra_hash_data()),
+            secret=self.secret,
+        ).hexdigest()[::2]
+        assert len(token_hash) == 20
+        return "%s-%s" % (self.serial, token_hash)
