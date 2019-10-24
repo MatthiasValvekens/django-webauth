@@ -154,6 +154,11 @@ class TokenGenerator:
             cls.validator = validator
 
     def get_token_data(self) -> Iterable:
+        """
+        Get data that is to be incorporated in the token hash, and in the
+        token itself. Typically a tuple.
+        :return: Iterable
+        """
         raise NotImplemented
 
     def format_token(self, data, token_hash) -> Tuple[str, object]:
@@ -171,6 +176,12 @@ class TokenGenerator:
         token_hash = self._compute_token_hash(data)
         return self.format_token(data, token_hash)
 
+    def bare_token(self):
+        """
+        :returns: a token without validity info.
+        :rtype: str
+        """
+        return self.make_token()[0]
 
 class BoundTokenValidator(TokenValidator, abc.ABC):
     """
@@ -288,10 +299,6 @@ class TimeBasedTokenValidator(BoundTokenValidator):
 
 class TokenGeneratorRequestMixin:
 
-    request = None
-    view_kwargs = None
-    view_instance = None
-
     @classmethod
     def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
         return view_kwargs
@@ -334,13 +341,6 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
         self.valid_from = valid_from
         super().__init__(**kwargs)
 
-    def bare_token(self):
-        """
-        :returns: a token without the timestamp when it expires.
-        :rtype: str
-        """
-        return self.make_token()[0]
-    
     def extra_hash_data(self):
         """
         Generate extra hash data to pass to :func:`salted_hmac`.
@@ -846,10 +846,7 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         return 1
 
 
-# TODO: food for thought, can we abstract away the logic that this thing
-#  has in common with TimeBasedTokenGenerator?
-#  Regardless, a rework of the base classes in this module seems in order
-class SignedSerialTokenGenerator(TokenValidator):
+class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator):
     """
     Generate tokens that do not depend on any timestamps.
     Intended to tie primary keys (or any serial number) to a specific
@@ -887,17 +884,15 @@ class SignedSerialTokenGenerator(TokenValidator):
         super().__init_subclass__(**kwargs)
 
     def __init__(self, serial: int):
-        self.validator = self # just to make the API consistent
+        super().__init__()
+        self.validator = self.__class__ # just to make the API consistent
         self.serial = serial
 
     def extra_hash_data(self):
         return ''
 
-    def make_token(self):
-        token_hash = salted_hmac(
-            self.key_salt,
-            str(self.serial) + str(self.extra_hash_data()),
-            secret=self.secret,
-        ).hexdigest()[::2]
-        assert len(token_hash) == 20
-        return "%s-%s" % (self.serial, token_hash)
+    def get_token_data(self) -> Iterable:
+        return self.serial,
+
+    def format_token(self, data, token_hash) -> Tuple[str, object]:
+        return "%s-%s" % (self.serial, token_hash), None
