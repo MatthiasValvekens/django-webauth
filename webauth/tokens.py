@@ -161,12 +161,25 @@ class TokenGenerator:
         """
         raise NotImplemented
 
+    def extra_hash_data(self):
+        """
+        Generate extra hash data to pass to :func:`salted_hmac`.
+        Default is the empty string.
+        This data is not passed to `format_token`, so cannot be recovered
+        from the token emitted.
+
+        :rtype: str
+        """
+        return ''
+
     def format_token(self, data, token_hash) -> Tuple[str, object]:
         raise NotImplemented
 
     def _compute_token_hash(self, data) -> str:
         token_hash = salted_hmac(
-            self.key_salt, ''.join(str(d) for d in data), secret=self.secret,
+            self.key_salt,
+            ''.join(str(d) for d in data) + self.extra_hash_data(),
+            secret=self.secret,
         ).hexdigest()[::2]
         assert len(token_hash) == 20
         return token_hash
@@ -334,21 +347,13 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
 
     lifespan = 0
 
-    TBTG_TOKEN_REGEX = re.compile(r'(\d+)-([a-z0-9]+)-[a-f0-9]{20}')
+    TBTG_TOKEN_REGEX = r'(\d+)-([a-z0-9]+)-[a-f0-9]{20}'
+    TBTG_TOKEN_PATTERN = re.compile(TBTG_TOKEN_REGEX)
 
     def __init__(self, *, valid_from: Optional[datetime.datetime]=None,
                  **kwargs):
         self.valid_from = valid_from
         super().__init__(**kwargs)
-
-    def extra_hash_data(self):
-        """
-        Generate extra hash data to pass to :func:`salted_hmac`.
-        Default is the empty string.
-
-        :rtype: str
-        """
-        return ''
 
     def get_lifespan(self):
         """
@@ -358,7 +363,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
         return self.lifespan
 
     def _token_data_for_ts(self, ts) -> Tuple:
-        return self.get_lifespan(), ts, self.extra_hash_data()
+        return self.get_lifespan(), ts
 
     def get_token_data(self) -> Tuple:
         valid_from_ts = self.time_elapsed(
@@ -368,7 +373,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
 
     def format_token(self, data, token_hash) \
             -> Tuple[str, Tuple[datetime.datetime,Optional[datetime.datetime]]]:
-        lifespan, timestamp, _ = data
+        lifespan, timestamp = data
         ts_b36 = int_to_base36(timestamp)
         token = "%s-%s-%s" % (lifespan, ts_b36, token_hash)
         valid_from = self.timestamp_to_datetime(timestamp)
@@ -855,7 +860,8 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         return {}
 
 
-class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator):
+class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator,
+                                 no_instances=True):
     """
     Generate tokens that do not depend on any timestamps.
     Intended to tie primary keys (or any serial number) to a specific
@@ -880,25 +886,10 @@ class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator):
         else:
             return self.MALFORMED_TOKEN, None
 
-    def __new__(cls, *args, **kwargs):
-        if cls is SignedSerialTokenGenerator:
-            raise TypeError(
-                'SignedSerialTokenGenerator must be subclassed'
-            )
-        return super().__new__(cls)  # throw away args
-
-    def __init_subclass__(cls, **kwargs):
-        if 'key_salt' not in cls.__dict__:
-            cls.key_salt = cls.__name__
-        super().__init_subclass__(**kwargs)
-
     def __init__(self, serial: int):
         super().__init__()
         self.validator = self.__class__ # just to make the API consistent
         self.serial = serial
-
-    def extra_hash_data(self):
-        return ''
 
     def get_token_data(self) -> Iterable:
         return self.serial,
