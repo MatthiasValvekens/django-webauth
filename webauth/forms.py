@@ -90,6 +90,7 @@ class OTPAuthenticationForm(otp_forms.OTPAuthenticationForm):
         for k, v in otp_labels.items():
             self.fields[k].label = v
         self.fields['otp_token'].widget.attrs['autocomplete'] = 'off'
+        self.fields['otp_token'].widget.attrs['autofocus'] = True
 
 
 class OTPTokenForm(otp_forms.OTPTokenForm):
@@ -98,3 +99,4 @@ class OTPTokenForm(otp_forms.OTPTokenForm):
         for k, v in otp_labels.items():
             self.fields[k].label = v
         self.fields['otp_token'].widget.attrs['autocomplete'] = 'off'
+        self.fields['otp_token'].widget.attrs['autofocus'] = True
