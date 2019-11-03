@@ -312,8 +312,14 @@ class TimeBasedTokenValidator(BoundTokenValidator):
 
 class TokenGeneratorRequestMixin:
 
+    kwargs_to_pass = None
+
     @classmethod
     def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+        if cls.kwargs_to_pass is not None:
+            return {
+                k: view_kwargs[k] for k in cls.kwargs_to_pass
+            }
         return view_kwargs
 
 
