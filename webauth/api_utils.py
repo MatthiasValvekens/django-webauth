@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Type, List
+from typing import Optional, Type, List, Dict
 
 import pytz
 from django.conf import settings
@@ -229,13 +229,17 @@ SESSION_UID_KEY = 'ticketing_term_uid'
 class UserAuthMechanism(APIAuthMechanism):
     json_name = 'user'
 
-    def __init__(self, perm_code: str):
-        self.perm_code = perm_code
+    def __init__(self, default_perm_code: str, perm_dict: Dict[str, str]=None):
+        self.default_perm_code = default_perm_code
+        self.perm_dict = perm_dict or {}  # type: Dict[str, str]
 
     def __call__(self, request, *_args, **_kwargs):
         user: models.User = request.user
         if user.is_authenticated:
-            if user.has_perm(self.perm_code):
+            relevant_perm = self.perm_dict.get(
+                request.method, self.default_perm_code
+            )
+            if user.has_perm(relevant_perm):
                 try:
                     uid = request.session[SESSION_UID_KEY]
                 except KeyError:
