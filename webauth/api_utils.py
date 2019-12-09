@@ -327,8 +327,15 @@ class APIEndpoint(View):
         self.auth_result: Optional[APIAccessStatus] = None
         super().__init__()
 
+    @property
+    def auth_workflow(self):
+        """
+        Optionally override API auth workflow on a per-endpoint basis
+        """
+        return self.api.auth_workflow
+
     def auth(self, request, *args, **kwargs) -> bool:
-        for auth_method in self.api.auth_workflow:
+        for auth_method in self.auth_workflow:
             result = auth_method(request, *args, **kwargs)
             json_name = auth_method.json_name or auth_method.__class__.__name__
             result.issuer = auth_method
