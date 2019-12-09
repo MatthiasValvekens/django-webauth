@@ -138,6 +138,7 @@ class TokenGenerator:
                 # kwargs are not inherited
                 for ancestor in cls.__mro__[1:]:
                     try:
+                        # noinspection PyUnresolvedReferences
                         validator_base = ancestor.validator
                         break
                     except AttributeError:
@@ -323,7 +324,8 @@ class TokenGeneratorRequestMixin:
         return view_kwargs
 
 
-class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
+class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
+                              validator_base=TimeBasedTokenValidator):
     """
     Inspired by :class:`django.contrib.auth.tokens.PasswordResetTokenGenerator`.
     Instances of this class generate tokens that expire after a given time.
