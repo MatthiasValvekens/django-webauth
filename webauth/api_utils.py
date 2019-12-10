@@ -275,7 +275,7 @@ class API:
     @property
     def endpoint_urls(self):
         return [
-            path(self.endpoint_url_base + name, cls.as_view(),
+            path(self.endpoint_url_base + name, csrf_exempt(cls.as_view()),
                  name=self.endpoint_url_name(name))
             for name, cls in self.endpoint_registry.items()
         ]
@@ -442,7 +442,6 @@ class APIEndpoint(View):
             auth_basis=self.auth_result.issuer_name, **kwargs
         )
 
-    @csrf_exempt
     def dispatch(self, request, *args, **kwargs):
         # parse JSON and populate the request._json_data parameter
         # so that auth workflow can already access it
