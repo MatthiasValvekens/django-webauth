@@ -287,7 +287,7 @@ class TimeBasedTokenValidator(BoundTokenValidator):
         except ValueError:
             return self.MALFORMED_TOKEN, None
 
-        data = generator._token_data_for_ts(ts)
+        data = generator._token_data_for_ts(ts, lifespan=lifespan)
         token_intact = constant_time_compare(
             generator._compute_token_hash(data), token_hash
         )
@@ -370,8 +370,8 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
         """
         return self.lifespan
 
-    def _token_data_for_ts(self, ts) -> Tuple:
-        return self.get_lifespan(), ts
+    def _token_data_for_ts(self, ts, lifespan=None) -> Tuple:
+        return lifespan or self.get_lifespan(), ts
 
     def get_token_data(self) -> Tuple:
         valid_from_ts = self.time_elapsed(
