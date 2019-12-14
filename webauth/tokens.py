@@ -750,10 +750,6 @@ class TimeBasedSessionTokenGenerator(
     consume_token = True
     validator: Type[TimeBasedSessionTokenValidator]
     
-    @classmethod
-    def from_view_data(cls, request, *_args, **_kwargs):
-        return cls(request)
-
     def __init__(self, request, *args, **kwargs):
         self.request = request
         super().__init__(*args, **kwargs)
@@ -769,6 +765,10 @@ class TimeBasedSessionTokenGenerator(
         # also, this avoids leaking the token through the URL
         req = self.request
         req.session[self.get_session_key()] = self.bare_token()
+
+    @classmethod
+    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+        return {'request': request}
 
 
 class TimeBasedDBUrlTokenValidator(
@@ -862,11 +862,6 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         # Regardless, the token is session-bound, so it will expire
         # along with the session.
         return 1
-
-    @classmethod
-    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
-        return {}
-
 
 class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator,
                                  no_instances=True):
