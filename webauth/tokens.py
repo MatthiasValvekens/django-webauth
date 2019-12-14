@@ -315,6 +315,8 @@ class TokenGeneratorRequestMixin:
 
     kwargs_to_pass = None
 
+    # TODO: it's probably more reasonable to grab kwargs from the __init__
+    #  signature and filter by those.
     @classmethod
     def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
         if cls.kwargs_to_pass is not None:
@@ -478,6 +480,24 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         raise NotImplementedError(
             'Subclasses must implement get_token'
         )
+
+    def instantiate_generator(self, consume_kwargs=()):
+        gen_class = self.generator_class
+        assert issubclass(gen_class, TokenGeneratorRequestMixin)
+        view_kwargs = dict(self.view_kwargs)
+        # delete all kwargs in the `consume_kwargs` tuple
+        for kwarg in consume_kwargs:
+            del view_kwargs[kwarg]
+        try:
+            kwargs = gen_class.get_constructor_kwargs(
+                request=self.request, view_kwargs=view_kwargs,
+                view_instance=self.view_instance
+            )
+            return gen_class(**kwargs)
+        except (KeyError, TypeError) as e:
+            raise TypeError(
+                'Could not instantiate generator from view data.', e
+            )
 
     def handle_token(self, view_func, pass_token=None, redirect_url=None,
                      pass_validity_info=None):
@@ -658,24 +678,10 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
     def get_token(self):
         return self.view_kwargs['token']
 
-    def instantiate_generator(self):
-        gen_class = self.generator_class
-        assert issubclass(gen_class, TokenGeneratorRequestMixin)
-        view_kwargs = dict(self.view_kwargs)
-        try:
-            del view_kwargs['token']
-        except KeyError:
-            pass
-        try:
-            kwargs = gen_class.get_constructor_kwargs(
-                request=self.request, view_kwargs=view_kwargs,
-                view_instance=self.view_instance
-            )
-            return gen_class(**kwargs)
-        except (KeyError, TypeError) as e:
-            raise TypeError(
-                'Could not instantiate generator from view data.', e
-            )
+    def instantiate_generator(self, consume_kwargs=()):
+        return super().instantiate_generator(
+            consume_kwargs=consume_kwargs + ('token',)
+        )
 
 
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
@@ -774,7 +780,7 @@ class TimeBasedSessionTokenGenerator(
 class TimeBasedDBUrlTokenValidator(
         DBUrlTokenValidator, TimeBasedTokenValidator):
 
-    def instantiate_generator(self):
+    def instantiate_generator(self, consume_kwargs=()):
         # instantiate a generator using the object we have
         return self.generator_class(self.get_object())
 
