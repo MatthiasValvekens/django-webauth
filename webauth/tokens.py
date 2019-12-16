@@ -295,18 +295,17 @@ class TimeBasedTokenValidator(BoundTokenValidator):
             return self.MALFORMED_TOKEN, None
 
         # Token is real. Now let's check the timestamps
-        cur_ts = generator.time_elapsed(generator.current_time())
-        valid_from = generator.timestamp_to_datetime(cur_ts)
+        cur_time = generator.current_time(strip=False)
+        valid_from = generator.timestamp_to_datetime(ts)
         # lifespan = 0 => only check valid_from
         if lifespan:
-            expiry_ts = lifespan + ts
-            valid_until = generator.timestamp_to_datetime(expiry_ts)
+            valid_until = generator.timestamp_to_datetime(lifespan + ts)
         else:
-            valid_until = expiry_ts = None
+            valid_until = None
         valid_range = (valid_from, valid_until)
-        if cur_ts < ts:
+        if cur_time < valid_from:
             return self.NOT_YET_VALID_TOKEN, valid_range
-        if expiry_ts is not None and cur_ts > expiry_ts:
+        if valid_until is not None and cur_time > valid_until:
             return self.EXPIRED_TOKEN, valid_range
         return self.VALID_TOKEN, valid_range
 
@@ -439,10 +438,11 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
         return self.ts_from_delta(dt - self.origin)
 
     @classmethod
-    def current_time(cls) -> datetime.datetime:
-        return datetime.datetime.utcnow().replace(
-            minute=0, second=0, microsecond=0
-        )
+    def current_time(cls, strip=True) -> datetime.datetime:
+        base = datetime.datetime.utcnow().replace(tzinfo=None)
+        if not strip:
+            return base
+        return base.replace(minute=0, second=0, microsecond=0)
 
 
 def _maybe_pass_kwarg(name, pass_kwarg, value, kwargs):
