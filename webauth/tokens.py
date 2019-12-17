@@ -18,6 +18,8 @@ from django.views.generic.detail import SingleObjectMixin
 #  is an instance
 # FIXME: outdated docstrings
 
+LIFESPAN_MAX = 1000000
+
 class TokenValidator(abc.ABC):
     """Base class for all token validators."""
 
@@ -280,6 +282,12 @@ class TimeBasedTokenValidator(BoundTokenValidator):
         try:
             lifespan_str, ts_b36, token_hash = token.split("-")
             lifespan = int(lifespan_str)
+            if lifespan > LIFESPAN_MAX:
+                raise ValueError(
+                    'Token lifespan %d larger than %d' % (
+                        lifespan, LIFESPAN_MAX
+                    )
+                )
         except ValueError:
             return self.MALFORMED_TOKEN, None
 
@@ -373,12 +381,22 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
         return self.lifespan
 
     def _token_data_for_ts(self, ts, lifespan=None) -> Tuple:
-        return (lifespan if lifespan is not None else self.get_lifespan()), ts
+        lifespan = lifespan if lifespan is not None else self.get_lifespan()
+        if lifespan > LIFESPAN_MAX or lifespan < 0:
+            raise ValueError(
+                'Token lifespan %d larger than %d' % (
+                    lifespan, LIFESPAN_MAX
+                )
+            )
+        return lifespan, ts
 
     def get_token_data(self) -> Tuple:
-        valid_from_ts = self.time_elapsed(
-            self.valid_from or self.current_time()
-        )
+        valid_from = self.valid_from or self.current_time()
+        if valid_from < self.origin:
+            raise ValueError(
+                'valid_from timestamp should occur after origin'
+            )
+        valid_from_ts = self.time_elapsed(valid_from)
         return self._token_data_for_ts(valid_from_ts)
 
     def format_token(self, data, token_hash) \

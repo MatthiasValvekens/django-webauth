@@ -81,12 +81,27 @@ class BasicTokenTest(TestCase):
             val.parse_token(None), MALFORMED_RESPONSE
         )
 
-    def test_malformed_too_many_parts(self):
+    def test_malformed_part_count(self):
         # too many sections
         self.assertEqual(
             val.parse_token('12-3iyp-dcb63c6bc16c93c2b130-zzz'),
             MALFORMED_RESPONSE
         )
+        self.assertEqual(
+            val.parse_token('3iyp-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_huge_lifespan(self):
+        # too many sections
+        self.assertEqual(
+            val.parse_token('2193891283912839218391823-3iyp-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+        gen = SimpleTBTGenerator()
+        gen.lifespan = 2193891283912839218391823
+        with self.assertRaises(ValueError):
+            gen.make_token()
 
     def test_malformed_bad_lifespan(self):
         self.assertEqual(
@@ -107,6 +122,7 @@ class BasicTokenTest(TestCase):
             val.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
             MALFORMED_RESPONSE
         )
+        
 
     def test_lifespan_zero(self): 
         with Replace(token_datetime, test_datetime(None)) as d:
@@ -153,3 +169,30 @@ class BasicTokenTest(TestCase):
             )
             d.set(2019,10,10,21,0,0)
             self.assertTrue(val.validate_token(tok))
+    
+    def test_negative_lifespan(self): 
+        gen = SimpleTBTGenerator()
+        gen.lifespan = -100
+        with self.assertRaises(ValueError):
+            gen.make_token()
+
+    def test_time_before_origin(self): 
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(1919,10,10,1,1,1)
+            gen = SimpleTBTGenerator()
+            with self.assertRaises(ValueError):
+                gen.make_token()
+
+            d.set(2019,10,10,1,1,1)
+            gen.valid_from = datetime.datetime(
+                1919,10,10,1,1,1, tzinfo=pytz.utc
+            )
+            with self.assertRaises(ValueError):
+                gen.make_token()
+    
+    def test_naive_valid_from(self):
+        gen = SimpleTBTGenerator()
+        gen.valid_from = datetime.datetime(1919,10,10,1,1,1)
+        with self.assertRaises(TypeError):
+            gen.make_token()
+        
