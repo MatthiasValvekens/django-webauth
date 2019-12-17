@@ -11,6 +11,9 @@ class SimpleTBTGenerator(tokens.TimeBasedTokenGenerator):
     EXAMPLE_TOKEN = '12-3iyp-dcb63c6bc16c93c2b130'
     lifespan = 12
 
+class FakeSimpleTBTGenerator(SimpleTBTGenerator):
+    pass
+
 val = SimpleTBTGenerator.validator()
 
 MALFORMED_RESPONSE = (
@@ -228,3 +231,14 @@ class BasicTokenTest(TestCase):
         with self.assertRaises(TypeError):
             gen.make_token()
         
+    def test_class_salt(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            fake_gen = FakeSimpleTBTGenerator()
+            fake_tok = fake_gen.bare_token()
+            gen = SimpleTBTGenerator()
+            real_tok = gen.bare_token()
+            self.assertEqual(real_tok, gen.EXAMPLE_TOKEN)
+            self.assertNotEqual(fake_tok, real_tok)
+            self.assertTrue(fake_gen.validator().validate_token(fake_tok))
+            self.assertFalse(gen.validator().validate_token(fake_tok))
