@@ -169,6 +169,38 @@ class BasicTokenTest(TestCase):
             )
             d.set(2019,10,10,21,0,0)
             self.assertTrue(val.validate_token(tok))
+
+    def test_valid_from_custom(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = SimpleTBTGenerator()
+            gen.lifespan = 2
+            gen.valid_from = datetime.datetime(
+                2019, 12, 10, 1, 1, 1, tzinfo=pytz.utc
+            )
+            val = gen.validator()
+            tok = gen.bare_token()
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
+            )
+            d.set(2019,12,10,0,59,59)
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
+            )
+            d.set(2019,12,10,1,0,0)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,12,10,1,1,1)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,12,10,3,0,0)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,12,10,3,0,1)
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
+            )
+
     
     def test_negative_lifespan(self): 
         gen = SimpleTBTGenerator()
