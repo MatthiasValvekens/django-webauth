@@ -373,7 +373,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
         return self.lifespan
 
     def _token_data_for_ts(self, ts, lifespan=None) -> Tuple:
-        return lifespan or self.get_lifespan(), ts
+        return (lifespan if lifespan is not None else self.get_lifespan()), ts
 
     def get_token_data(self) -> Tuple:
         valid_from_ts = self.time_elapsed(

@@ -9,9 +9,7 @@ token_datetime = 'webauth.tokens.datetime.datetime'
 
 class SimpleTBTGenerator(tokens.TimeBasedTokenGenerator):
     EXAMPLE_TOKEN = '12-3iyp-dcb63c6bc16c93c2b130'
-
-    def get_lifespan(self):
-        return 12
+    lifespan = 12
 
 val = SimpleTBTGenerator.validator()
 
@@ -109,3 +107,49 @@ class BasicTokenTest(TestCase):
             val.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
             MALFORMED_RESPONSE
         )
+
+    def test_lifespan_zero(self): 
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = SimpleTBTGenerator()
+            gen.lifespan = 0
+            tok, (valid_from, valid_until) = gen.make_token()
+            self.assertEqual(valid_until, None)
+            self.assertTrue(tok.startswith('0-'))
+            d.set(2019,10,10,0,59,59)
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
+            )
+            d.set(2019,10,10,1,0,0)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,10,10,13,0,0)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,10,10,17,0,0)
+            self.assertTrue(val.validate_token(tok))
+
+    def test_lifespan_custom(self): 
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = SimpleTBTGenerator()
+            gen.lifespan = 20
+            tok, (valid_from, valid_until) = gen.make_token()
+            self.assertEqual(
+                valid_until, 
+                datetime.datetime(2019,10,10,21,0,0,tzinfo=pytz.utc)
+            )
+            self.assertTrue(tok.startswith('20-'))
+            d.set(2019,10,10,0,59,59)
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
+            )
+            d.set(2019,10,10,1,0,0)
+            self.assertTrue(val.validate_token(tok))
+            d.set(2019,10,10,21,0,1)
+            self.assertEqual(
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
+            )
+            d.set(2019,10,10,21,0,0)
+            self.assertTrue(val.validate_token(tok))
