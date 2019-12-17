@@ -8,8 +8,12 @@ from webauth import tokens
 token_datetime = 'webauth.tokens.datetime.datetime'
 
 class SimpleTBTGenerator(tokens.TimeBasedTokenGenerator):
+    EXAMPLE_TOKEN = '12-3iyp-dcb63c6bc16c93c2b130'
+
     def get_lifespan(self):
         return 12
+
+val = SimpleTBTGenerator.validator()
 
 MALFORMED_RESPONSE = (
     tokens.TimeBasedTokenValidator.MALFORMED_TOKEN, None
@@ -21,10 +25,10 @@ class BasicTokenTest(TestCase):
         with Replace(token_datetime, test_datetime(None)) as d:
             d.set(2019,10,10,1,1,1)
             tok = SimpleTBTGenerator().bare_token()
-            self.assertEqual(tok, '12-3iyp-dcb63c6bc16c93c2b130')
+            self.assertEqual(tok, SimpleTBTGenerator.EXAMPLE_TOKEN)
 
     
-    def test_expiry(self):
+    def test_expiry_base(self):
         with Replace(token_datetime, test_datetime(None)) as d:
             d.set(2019,10,10,1,1,1)
             tok, (valid_from, valid_until) = SimpleTBTGenerator().make_token()
@@ -37,57 +41,71 @@ class BasicTokenTest(TestCase):
                 datetime.datetime(2019,10,10,13,0,0)
             )
     
-            val = SimpleTBTGenerator.validator()
             d.set(2019,10,10,0,59,59)
             self.assertEqual(
                 val.parse_token(tok)[0], 
                 tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
             d.set(2019,10,10,1,0,0)
-            self.assertEqual(
-                val.parse_token(tok)[0], 
-                tokens.TimeBasedTokenValidator.VALID_TOKEN
-            )
+            self.assertTrue(val.validate_token(tok))
             d.set(2019,10,10,13,0,1)
             self.assertEqual(
                 val.parse_token(tok)[0], 
                 tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
             )
             d.set(2019,10,10,13,0,0)
-            self.assertEqual(
-                val.parse_token(tok)[0], 
-                tokens.TimeBasedTokenValidator.VALID_TOKEN
-            )
-
-    def test_malformed(self):
+            self.assertTrue(val.validate_token(tok))
+    
+    def test_validity_from(self):
         with Replace(token_datetime, test_datetime(None)) as d:
-            d.set(2019,10,10,1,1,1)
-            tok, validity_info = SimpleTBTGenerator().make_token()
-            val = SimpleTBTGenerator.validator()
-            self.assertEqual(
-                val.parse_token(None), MALFORMED_RESPONSE
-            )
+            d.set(2019,10,10,0,59,59)
+            tok = SimpleTBTGenerator.EXAMPLE_TOKEN
             self.assertEqual(
                 val.parse_token(tok)[0], 
-                tokens.TimeBasedTokenValidator.VALID_TOKEN
+                tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
-            # too many sections
+            d.set(2019,10,10,1,0,0)
+            self.assertTrue(val.validate_token(tok))
+
+    def test_validity_until(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,13,0,1)
+            tok = SimpleTBTGenerator.EXAMPLE_TOKEN
             self.assertEqual(
-                val.parse_token('12-3iyp-dcb63c6bc16c93c2b130-zzz'),
-                MALFORMED_RESPONSE
+                val.parse_token(tok)[0], 
+                tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
             )
-            # bad lifespan string
-            self.assertEqual(
-                val.parse_token('XX-3iyp-dcb63c6bc16c93c2b130'),
-                MALFORMED_RESPONSE
-            )
-            # malformed date part
-            self.assertEqual(
-                val.parse_token('12-3AAA-dcb63c6bc16c93c2b130'),
-                MALFORMED_RESPONSE
-            )
-            # bad hash
-            self.assertEqual(
-                val.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
-                MALFORMED_RESPONSE
-            )
+            d.set(2019,10,10,13,0,0)
+            self.assertTrue(val.validate_token(tok))
+
+    def test_malformed_none(self):
+        self.assertEqual(
+            val.parse_token(None), MALFORMED_RESPONSE
+        )
+
+    def test_malformed_too_many_parts(self):
+        # too many sections
+        self.assertEqual(
+            val.parse_token('12-3iyp-dcb63c6bc16c93c2b130-zzz'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_bad_lifespan(self):
+        self.assertEqual(
+            val.parse_token('XX-3iyp-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_date(self):
+        # malformed date part
+        self.assertEqual(
+            val.parse_token('12-3AAA-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_hash(self):
+        # bad hash
+        self.assertEqual(
+            val.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
+            MALFORMED_RESPONSE
+        )
