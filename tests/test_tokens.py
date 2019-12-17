@@ -34,11 +34,11 @@ class BasicTokenTest(TestCase):
             tok, (valid_from, valid_until) = SimpleTBTGenerator().make_token()
             self.assertEqual(
                 valid_from, 
-                datetime.datetime(2019,10,10,1,0,0)
+                datetime.datetime(2019,10,10,1,0,0, tzinfo=pytz.utc)
             )
             self.assertEqual(
                 valid_until, 
-                datetime.datetime(2019,10,10,13,0,0)
+                datetime.datetime(2019,10,10,13,0,0, tzinfo=pytz.utc)
             )
     
             d.set(2019,10,10,0,59,59)

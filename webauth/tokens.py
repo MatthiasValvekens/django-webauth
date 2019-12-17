@@ -4,6 +4,7 @@ import re
 from functools import wraps
 from typing import Type, Tuple, Iterable, Optional
 
+import pytz
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, Http404, HttpResponseNotFound
 from django.utils.http import base36_to_int, int_to_base36
@@ -351,7 +352,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
     """
 
     origin = datetime.datetime.combine(
-        datetime.date(2001, 1, 1), datetime.datetime.min.time()
+        datetime.date(2001, 1, 1), datetime.datetime.min.time(), tzinfo=pytz.utc
     )
 
     lifespan = 0
@@ -439,7 +440,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
 
     @classmethod
     def current_time(cls, strip=True) -> datetime.datetime:
-        base = datetime.datetime.utcnow().replace(tzinfo=None)
+        base = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
         if not strip:
             return base
         return base.replace(minute=0, second=0, microsecond=0)
