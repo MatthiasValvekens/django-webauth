@@ -14,6 +14,13 @@ class SimpleTBTGenerator(tokens.TimeBasedTokenGenerator):
 class FakeSimpleTBTGenerator(SimpleTBTGenerator):
     pass
 
+class ExtraTBTGenerator(SimpleTBTGenerator):
+    def __init__(self, stuff: int):
+        self.stuff = stuff
+
+    def extra_hash_data(self):
+        return str(self.stuff)
+
 val = SimpleTBTGenerator.validator()
 
 MALFORMED_RESPONSE = (
@@ -242,3 +249,21 @@ class BasicTokenTest(TestCase):
             self.assertNotEqual(fake_tok, real_tok)
             self.assertTrue(fake_gen.validator().validate_token(fake_tok))
             self.assertFalse(gen.validator().validate_token(fake_tok))
+
+    def test_extra_hash_data(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = ExtraTBTGenerator(stuff=4)
+            tok1 = gen.bare_token()
+            gen.stuff = 5
+            d.set(2019,10,10,1,1,1)
+            tok2 = gen.bare_token()
+            self.assertNotEqual(tok1, tok2)
+            evaluator = gen.validator(
+                generator_kwargs={'stuff': 5}
+            )
+            self.assertTrue(evaluator.validate_token(tok2))
+            self.assertFalse(
+                evaluator.validate_token(tok1)
+            )
+
