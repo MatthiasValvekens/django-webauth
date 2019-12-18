@@ -1,6 +1,8 @@
 import pytz
 import datetime
 from django.test import TestCase
+# This is in test-requirements.txt, but PyCharm doesn't know that
+# noinspection PyPackageRequirements
 from testfixtures import Replace, test_datetime
 from webauth import tokens
 
@@ -17,16 +19,19 @@ class FakeSimpleTBTGenerator(SimpleTBTGenerator):
 class ExtraTBTGenerator(SimpleTBTGenerator):
     def __init__(self, stuff: int):
         self.stuff = stuff
+        super().__init__()
 
     def extra_hash_data(self):
         return str(self.stuff)
 
-val = SimpleTBTGenerator.validator()
+simple_validator = SimpleTBTGenerator.validator()
 
 MALFORMED_RESPONSE = (
     tokens.TimeBasedTokenValidator.MALFORMED_TOKEN, None
 )
 
+
+# noinspection DuplicatedCode
 class BasicTokenTest(TestCase):
 
     def test_token(self):
@@ -48,64 +53,64 @@ class BasicTokenTest(TestCase):
                 valid_until, 
                 datetime.datetime(2019,10,10,13,0,0, tzinfo=pytz.utc)
             )
-    
             d.set(2019,10,10,0,59,59)
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
             d.set(2019,10,10,1,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
             d.set(2019,10,10,13,0,1)
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
             )
             d.set(2019,10,10,13,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
     
     def test_validity_from(self):
         with Replace(token_datetime, test_datetime(None)) as d:
             d.set(2019,10,10,0,59,59)
             tok = SimpleTBTGenerator.EXAMPLE_TOKEN
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
             d.set(2019,10,10,1,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
 
     def test_validity_until(self):
         with Replace(token_datetime, test_datetime(None)) as d:
             d.set(2019,10,10,13,0,1)
             tok = SimpleTBTGenerator.EXAMPLE_TOKEN
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
             )
             d.set(2019,10,10,13,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
 
     def test_malformed_none(self):
+        # noinspection PyTypeChecker
         self.assertEqual(
-            val.parse_token(None), MALFORMED_RESPONSE
+            simple_validator.parse_token(None), MALFORMED_RESPONSE
         )
 
     def test_malformed_part_count(self):
         # too many sections
         self.assertEqual(
-            val.parse_token('12-3iyp-dcb63c6bc16c93c2b130-zzz'),
+            simple_validator.parse_token('12-3iyp-dcb63c6bc16c93c2b130-zzz'),
             MALFORMED_RESPONSE
         )
         self.assertEqual(
-            val.parse_token('3iyp-dcb63c6bc16c93c2b130'),
+            simple_validator.parse_token('3iyp-dcb63c6bc16c93c2b130'),
             MALFORMED_RESPONSE
         )
 
     def test_malformed_huge_lifespan(self):
         # too many sections
         self.assertEqual(
-            val.parse_token('2193891283912839218391823-3iyp-dcb63c6bc16c93c2b130'),
+            simple_validator.parse_token('2193891283912839218391823-3iyp-dcb63c6bc16c93c2b130'),
             MALFORMED_RESPONSE
         )
         gen = SimpleTBTGenerator()
@@ -115,21 +120,21 @@ class BasicTokenTest(TestCase):
 
     def test_malformed_bad_lifespan(self):
         self.assertEqual(
-            val.parse_token('XX-3iyp-dcb63c6bc16c93c2b130'),
+            simple_validator.parse_token('XX-3iyp-dcb63c6bc16c93c2b130'),
             MALFORMED_RESPONSE
         )
 
     def test_malformed_date(self):
         # malformed date part
         self.assertEqual(
-            val.parse_token('12-3AAA-dcb63c6bc16c93c2b130'),
+            simple_validator.parse_token('12-3AAA-dcb63c6bc16c93c2b130'),
             MALFORMED_RESPONSE
         )
 
     def test_malformed_hash(self):
         # bad hash
         self.assertEqual(
-            val.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
+            simple_validator.parse_token('12-3iyp-dcb63c6bc16c93c2aaaa'),
             MALFORMED_RESPONSE
         )
         
@@ -144,15 +149,15 @@ class BasicTokenTest(TestCase):
             self.assertTrue(tok.startswith('0-'))
             d.set(2019,10,10,0,59,59)
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
             d.set(2019,10,10,1,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
             d.set(2019,10,10,13,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
             d.set(2019,10,10,17,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
 
     def test_lifespan_custom(self): 
         with Replace(token_datetime, test_datetime(None)) as d:
@@ -167,18 +172,18 @@ class BasicTokenTest(TestCase):
             self.assertTrue(tok.startswith('20-'))
             d.set(2019,10,10,0,59,59)
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.NOT_YET_VALID_TOKEN
             )
             d.set(2019,10,10,1,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
             d.set(2019,10,10,21,0,1)
             self.assertEqual(
-                val.parse_token(tok)[0], 
+                simple_validator.parse_token(tok)[0],
                 tokens.TimeBasedTokenValidator.EXPIRED_TOKEN
             )
             d.set(2019,10,10,21,0,0)
-            self.assertTrue(val.validate_token(tok))
+            self.assertTrue(simple_validator.validate_token(tok))
 
     def test_valid_from_custom(self):
         with Replace(token_datetime, test_datetime(None)) as d:
@@ -266,4 +271,3 @@ class BasicTokenTest(TestCase):
             self.assertFalse(
                 evaluator.validate_token(tok1)
             )
-
