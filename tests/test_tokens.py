@@ -1,6 +1,7 @@
 import pytz
 import datetime
 from django.test import TestCase
+from django.urls import reverse
 # This is in test-requirements.txt, but PyCharm doesn't know that
 # noinspection PyPackageRequirements
 from testfixtures import Replace, test_datetime
@@ -278,10 +279,32 @@ class TestRequestTokens(TestCase):
 
     def test_filter_kwargs(self):
         gen_cls = test_views.SimpleTBUrlTokenGenerator
+        view_kwargs = {'stuff': 5, 'irrelevant': 1239}
         gen_kwargs = gen_cls.get_constructor_kwargs(
-            request=None, view_kwargs={'stuff': 5, 'irrelevant': 1239}
+            request=None, view_kwargs=dict(view_kwargs)
         )
         self.assertFalse('irrelevant' in gen_kwargs)
         gen = gen_cls(**gen_kwargs)
         self.assertEquals(gen.stuff, 5)
 
+        val = gen_cls.validator(request=None)
+        val.view_kwargs = dict(view_kwargs)
+        gen = val.instantiate_generator()
+        self.assertEquals(gen.stuff, 5)
+
+    def test_simple_view(self):
+        tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
+        url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
+        response = self.client.get(url)
+        self.assertEqual(response.content, b'5')
+
+    def test_simple_view_with_more_args(self):
+        tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
+        url = reverse(
+            'simple_view_with_more_args', kwargs={
+                'stuff': 5, 'token': tok,
+                'foo': 'abcd', 'bar': 'baz'
+            }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.content, b'5abcd')
