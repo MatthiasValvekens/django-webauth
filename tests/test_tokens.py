@@ -296,7 +296,49 @@ class TestRequestTokens(TestCase):
         tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
         url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
         response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b'5')
+
+    def test_simple_view_no_token(self):
+        url = reverse('simple_view_notoken', kwargs={'stuff': 5})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.content, b'Invalid token')
+
+    def test_simple_view_wrong_token(self):
+        tok = SimpleTBTGenerator().bare_token()
+        url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.content, b'Invalid token')
+
+    def test_simple_view_expired_token(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
+            gen.lifespan = 3
+            tok = gen.bare_token()
+            url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
+
+            d.set(2019,10,10,2,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'5')
+
+            d.set(2019,10,10,4,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'5')
+
+            d.set(2019,10,10,4,0,1)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 410)
+            self.assertTrue(b'expired' in response.content)
+
+            d.set(2019,10,10,0,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404)
+            self.assertTrue(b'only valid from' in response.content)
 
     def test_simple_view_with_more_args(self):
         tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
@@ -313,9 +355,40 @@ class TestRequestTokens(TestCase):
         tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
         url = reverse(
             'simple_cbv', kwargs={
-                'stuff': 5, 'token': tok,
-                'foo': 'abcd', 'bar': 'baz'
+                'stuff': 5, 'token': tok, 'foo': 'abcd', 'bar': 'baz'
             }
         )
         response = self.client.get(url)
         self.assertEqual(response.content, b'5abcd')
+
+    def test_simple_cbv_expired_token(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
+            gen.lifespan = 3
+            tok = gen.bare_token()
+            url = reverse(
+                'simple_cbv', kwargs={
+                    'stuff': 5, 'token': tok, 'foo': 'abcd', 'bar': 'baz'
+                }
+            )
+
+            d.set(2019,10,10,2,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'5abcd')
+
+            d.set(2019,10,10,4,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'5abcd')
+
+            d.set(2019,10,10,4,0,1)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 410)
+            self.assertTrue(b'expired' in response.content)
+
+            d.set(2019,10,10,0,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404)
+            self.assertTrue(b'only valid from' in response.content)

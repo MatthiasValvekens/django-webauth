@@ -7,7 +7,7 @@ from typing import Type, Tuple, Iterable, Optional
 
 import pytz
 from django.utils.crypto import constant_time_compare, salted_hmac
-from django.http import HttpResponseGone, Http404, HttpResponseNotFound
+from django.http import HttpResponseGone, HttpResponseNotFound
 from django.utils.http import base36_to_int, int_to_base36
 from django.utils.translation import ugettext_lazy as _
 from django.shortcuts import render, redirect
@@ -588,7 +588,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                 redirect_url = redirect_url(self.request)
             return redirect(redirect_url)
         else:
-            raise Http404('Invalid token')
+            return HttpResponseNotFound('Invalid token')
 
     @classmethod
     def enforce_token(cls, view_func=None, view_instance=None, **kwargs):
