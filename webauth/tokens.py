@@ -614,7 +614,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
             return decorator
         elif callable(view_func):
             # called without arguments, so we *are* the decorator
-            return wraps(view_func)(decorator(view_func))
+            return decorator(view_func)
         else:
             raise ValueError('Invalid arguments for enforce_token')
     
