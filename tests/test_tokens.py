@@ -308,3 +308,14 @@ class TestRequestTokens(TestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.content, b'5abcd')
+
+    def test_simple_cbv(self):
+        tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
+        url = reverse(
+            'simple_cbv', kwargs={
+                'stuff': 5, 'token': tok,
+                'foo': 'abcd', 'bar': 'baz'
+            }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.content, b'5abcd')

@@ -15,3 +15,8 @@ def simple_view(request, stuff: int):
 @SimpleTBUrlTokenGenerator.validator.enforce_token(pass_token=False)
 def simple_view_with_more_args(request, stuff: int, foo: str, bar: str):
     return HttpResponse(str(stuff) + str(foo))
+
+SimpleTokenMixin = SimpleTBUrlTokenGenerator.validator.as_mixin()
+class SimpleCBV(SimpleTokenMixin):
+    def get(self, request, *args, stuff, foo, bar, **kwargs): 
+        return HttpResponse(str(stuff) + str(foo))

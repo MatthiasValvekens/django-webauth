@@ -6,6 +6,8 @@ token_testing = [
     path('simple_view/<int:stuff>/<str:token>/', views.simple_view, name='simple_view'),
     path('simple_view2/<int:stuff>/<str:foo>/<str:bar>/<str:token>/', 
             views.simple_view_with_more_args, name='simple_view_with_more_args'),
+    path('simple_cbv/<int:stuff>/<str:foo>/<str:bar>/<str:token>/', 
+            views.SimpleCBV.as_view(), name='simple_cbv'),
 ]
 
 urlpatterns = [
