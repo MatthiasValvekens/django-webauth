@@ -42,9 +42,7 @@ class TokenValidator(abc.ABC):
         :returns: the parse result and the token's expiration time.
         :rtype: int, datetime.datetime
         """
-        raise NotImplementedError(
-            'TokenValidator subclasses must implement `parse_token`'
-        )
+        raise NotImplementedError
 
     def validate_token(self, token):
         """Validate a token.
@@ -81,9 +79,7 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
         Must be implemented by subclasses.
         """
         # pragma: no cover
-        raise NotImplementedError(
-            'Subclasses of ObjectTokenValidator should implement get_object'
-        )
+        raise NotImplementedError
 
     def parse_token(self, token):
         """
@@ -104,30 +100,18 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
             return TokenValidator.VALID_TOKEN, None
 
 
-class TokenGenerator:
+class TokenGenerator(abc.ABC):
 
     secret = settings.SECRET_KEY
     validator: Type['TokenValidator'] = None
 
-    def __new__(cls, *args, **kwargs):
-        if cls._no_instances:
-            raise TypeError('%s must be subclassed' % cls.__name__)
-        # if __new__ is called with arguments from a subclass that does
-        # not explicitly override it, we'll get those args before
-        # the subclass's __init__ method can consume them.
-        # Since object() does not take any arguments, we have
-        # to discard them explicitly
-        return super().__new__(cls)
-
     # TODO: add validator_base kwarg example
-    def __init_subclass__(cls, validator_base=None, no_instances=False):
+    def __init_subclass__(cls, validator_base=None):
         # As opposed to hasattr(), this ensures that a subclass can only
         # override our inheritance magic by explicitly declaring
         # the relevant attribute
         if 'key_salt' not in cls.__dict__:
             cls.key_salt = cls.__name__
-
-        cls._no_instances = no_instances
 
         if 'validator' not in cls.__dict__:
             if validator_base is None:
@@ -159,13 +143,14 @@ class TokenGenerator:
             assert issubclass(validator, BoundTokenValidator)
             cls.validator = validator
 
+    @abc.abstractmethod
     def get_token_data(self) -> Iterable:
         """
         Get data that is to be incorporated in the token hash, and in the
         token itself. Typically a tuple.
         :return: Iterable
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def extra_hash_data(self):
         """
@@ -178,8 +163,9 @@ class TokenGenerator:
         """
         return ''
 
+    @abc.abstractmethod
     def format_token(self, data, token_hash) -> Tuple[str, object]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def _compute_token_hash(self, data) -> str:
         token_hash = salted_hmac(
@@ -201,6 +187,7 @@ class TokenGenerator:
         :rtype: str
         """
         return self.make_token()[0]
+
 
 class BoundTokenValidator(TokenValidator, abc.ABC):
     """
@@ -375,7 +362,7 @@ class TokenGeneratorRequestMixin:
         return view_kwargs
 
 
-class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
+class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
                               validator_base=TimeBasedTokenValidator):
     """
     Inspired by :class:`django.contrib.auth.tokens.PasswordResetTokenGenerator`.
@@ -537,9 +524,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         """
         Retrieve the token from request data.
         """
-        raise NotImplementedError(
-            'Subclasses must implement get_token'
-        )
+        raise NotImplementedError
 
     def instantiate_generator(self):
         gen_class = self.generator_class
@@ -802,7 +787,7 @@ class TimeBasedUrlTokenGenerator(
 
 
 class TimeBasedSessionTokenGenerator(
-        TimeBasedTokenGenerator, TokenGeneratorRequestMixin,
+        TimeBasedTokenGenerator, TokenGeneratorRequestMixin, abc.ABC,
         validator_base=TimeBasedSessionTokenValidator):
 
     consume_token = True
@@ -816,7 +801,7 @@ class TimeBasedSessionTokenGenerator(
         try:
             return self.session_key
         except AttributeError:
-            raise NotImplemented
+            raise NotImplementedError
 
     def embed_token(self):
         # The token is session-bound, so this makes sense.
@@ -921,8 +906,7 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         # along with the session.
         return 1
 
-class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator,
-                                 no_instances=True):
+class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator, abc.ABC):
     """
     Generate tokens that do not depend on any timestamps.
     Intended to tie primary keys (or any serial number) to a specific
