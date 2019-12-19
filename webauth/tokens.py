@@ -1,4 +1,5 @@
 import datetime
+import inspect
 import abc
 import re
 from functools import wraps
@@ -79,6 +80,7 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
         Function called to retrieve the object on which the token lives.
         Must be implemented by subclasses.
         """
+        # pragma: no cover
         raise NotImplementedError(
             'Subclasses of ObjectTokenValidator should implement get_object'
         )
@@ -319,17 +321,56 @@ class TimeBasedTokenValidator(BoundTokenValidator):
         return self.VALID_TOKEN, valid_range
 
 
+KWARG_PARAM_KINDS = (
+    inspect.Parameter.KEYWORD_ONLY,
+    inspect.Parameter.POSITIONAL_OR_KEYWORD
+)
+
+def init_kwargs(cls, mro=None):
+    if mro is None:
+        mro = cls.__mro__
+    mro = mro[1:]
+    try:
+        kwargs_to_pass = cls.kwargs_to_pass
+        if kwargs_to_pass is None:
+            set_on_class = True
+        else:
+            return kwargs_to_pass
+    except AttributeError:
+        set_on_class = False
+
+    # pick off kwargs that may not be recognised
+    init_sign = inspect.signature(cls.__init__)
+    has_varkwargs = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD
+        for p in init_sign.parameters.values()
+    )
+
+    kwargs_to_pass = {
+        name for name, param in init_sign.parameters.items()
+        if param.kind in KWARG_PARAM_KINDS and name != 'self'
+    }
+
+    if has_varkwargs and mro:
+        for p in mro:
+            kwargs_to_pass |= init_kwargs(p, mro=mro)
+
+    if set_on_class:
+        cls.kwargs_to_pass = kwargs_to_pass
+
+    return kwargs_to_pass
+
+
 class TokenGeneratorRequestMixin:
 
+    pass_anything = False
     kwargs_to_pass = None
 
-    # TODO: it's probably more reasonable to grab kwargs from the __init__
-    #  signature and filter by those.
     @classmethod
     def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
-        if cls.kwargs_to_pass is not None:
+        if not cls.pass_anything:
             return {
-                k: view_kwargs[k] for k in cls.kwargs_to_pass
+                k: v for k, v in view_kwargs.items() if k in init_kwargs(cls)
             }
         return view_kwargs
 
@@ -391,8 +432,8 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True,
         return lifespan, ts
 
     def get_token_data(self) -> Tuple:
-        valid_from = self.valid_from or self.current_time()
-        if valid_from < self.origin:
+        valid_from = getattr(self, 'valid_from',  None) or self.current_time()
+        if valid_from and valid_from < self.origin:
             raise ValueError(
                 'valid_from timestamp should occur after origin'
             )

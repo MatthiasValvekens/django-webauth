@@ -5,6 +5,7 @@ from django.test import TestCase
 # noinspection PyPackageRequirements
 from testfixtures import Replace, test_datetime
 from webauth import tokens
+from . import views as test_views
 
 
 token_datetime = 'webauth.tokens.datetime.datetime'
@@ -127,7 +128,7 @@ class BasicTokenTest(TestCase):
     def test_malformed_date(self):
         # malformed date part
         self.assertEqual(
-            simple_validator.parse_token('12-3AAA-dcb63c6bc16c93c2b130'),
+            simple_validator.parse_token('12-3***-dcb63c6bc16c93c2b130'),
             MALFORMED_RESPONSE
         )
 
@@ -271,3 +272,16 @@ class BasicTokenTest(TestCase):
             self.assertFalse(
                 evaluator.validate_token(tok1)
             )
+
+
+class TestRequestTokens(TestCase):
+
+    def test_filter_kwargs(self):
+        gen_cls = test_views.SimpleTBUrlTokenGenerator
+        gen_kwargs = gen_cls.get_constructor_kwargs(
+            request=None, view_kwargs={'stuff': 5, 'irrelevant': 1239}
+        )
+        self.assertFalse('irrelevant' in gen_kwargs)
+        gen = gen_cls(**gen_kwargs)
+        self.assertEquals(gen.stuff, 5)
+
