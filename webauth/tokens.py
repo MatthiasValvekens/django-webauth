@@ -541,13 +541,10 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
             'Subclasses must implement get_token'
         )
 
-    def instantiate_generator(self, consume_kwargs=()):
+    def instantiate_generator(self):
         gen_class = self.generator_class
         assert issubclass(gen_class, TokenGeneratorRequestMixin)
         view_kwargs = dict(self.view_kwargs)
-        # delete all kwargs in the `consume_kwargs` tuple
-        for kwarg in consume_kwargs:
-            del view_kwargs[kwarg]
         try:
             kwargs = gen_class.get_constructor_kwargs(
                 request=self.request, view_kwargs=view_kwargs,
@@ -738,11 +735,6 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
     def get_token(self):
         return self.view_kwargs['token']
 
-    def instantiate_generator(self, consume_kwargs=()):
-        return super().instantiate_generator(
-            consume_kwargs=consume_kwargs + ('token',)
-        )
-
 
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
 
@@ -840,7 +832,7 @@ class TimeBasedSessionTokenGenerator(
 class TimeBasedDBUrlTokenValidator(
         DBUrlTokenValidator, TimeBasedTokenValidator):
 
-    def instantiate_generator(self, consume_kwargs=()):
+    def instantiate_generator(self):
         # instantiate a generator using the object we have
         return self.generator_class(self.get_object())
 
