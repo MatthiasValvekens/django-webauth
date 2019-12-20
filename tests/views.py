@@ -44,3 +44,7 @@ class SimpleCustomerCBV2(CustomerEmailMixin, SingleObjectMixin):
 @models.CustomerTokenGenerator.validator.enforce_token(pass_token=False)
 def simple_customer_view(request, pk):
     return HttpResponse(str(pk))
+
+@models.CustomerSessionTokenGenerator.validator.enforce_token(pass_token=False)
+def simple_customer_session_view(request, pk):
+    return HttpResponse(str(pk))

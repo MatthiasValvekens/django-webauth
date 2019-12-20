@@ -2,6 +2,7 @@ SECRET_KEY = 'fake-key'
 
 INSTALLED_APPS = [
     'django.contrib.auth',
+    'django.contrib.sessions',
     'django.contrib.contenttypes',
     'webauth', 'tests',
 ]
@@ -31,3 +32,15 @@ TEMPLATES = [{
         )
     }
 }]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.file'

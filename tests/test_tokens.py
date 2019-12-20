@@ -459,7 +459,7 @@ class TestDBDrivenTokens(TestCase):
             with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertContains(
-                    response, b'No customer found matching the query',
+                    response, 'No customer found matching the query',
                     status_code=404
                 )
 
@@ -533,3 +533,71 @@ class TestDBDrivenTokens(TestCase):
         self.assertContains(
             response, 'Invalid', status_code=404
         )
+
+    def test_session_token(self):
+        cust = models.Customer.objects.get(pk=1)
+        gen = models.CustomerSessionTokenGenerator(request=None, customer=cust)
+        tok = gen.bare_token()
+        session = self.client.session
+        session[gen.session_key] = tok
+        session.save()
+        url = reverse(
+            'simple_cust_session_view', kwargs={ 'pk': 1 }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'1')
+
+    def test_session_token_mismatch(self):
+        cust = models.Customer.objects.get(pk=1)
+        gen = models.CustomerSessionTokenGenerator(request=None, customer=cust)
+        tok = gen.bare_token()
+        session = self.client.session
+        session[gen.session_key] = tok
+        session.save()
+        url = reverse(
+            'simple_cust_session_view', kwargs={ 'pk': 2 }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.content, b'Invalid token')
+
+    def test_session_token_notoken(self):
+        url = reverse(
+            'simple_cust_session_view', kwargs={ 'pk': 2 }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.content, b'Invalid token')
+
+    def test_session_token_expired(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            cust = models.Customer.objects.get(pk=1)
+            gen = models.CustomerSessionTokenGenerator(
+                request=None, customer=cust
+            )
+            gen.lifespan = 3
+            tok = gen.bare_token()
+
+            session = self.client.session
+            session[gen.session_key] = tok
+            session.save()
+
+            url = reverse('simple_cust_session_view', kwargs={'pk': 1})
+            d.set(2019,10,10,2,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'1')
+            d.set(2019,10,10,4,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'1')
+
+            d.set(2019,10,10,4,0,1)
+            response = self.client.get(url)
+            self.assertContains(response, 'expired', status_code=410)
+
+            d.set(2019,10,10,0,0,0)
+            response = self.client.get(url)
+            self.assertContains(response, 'only valid from', status_code=404)

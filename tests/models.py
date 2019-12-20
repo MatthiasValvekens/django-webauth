@@ -5,6 +5,7 @@ from webauth import fields as webauth_fields
 from webauth.tokens import (
     ObjectDBUrlTokenValidator, TimeBasedUrlTokenGenerator,
     TimeBasedUrlTokenValidator,
+    TimeBasedSessionTokenGenerator,
 )
 
 
@@ -45,6 +46,29 @@ class CustomerTokenGenerator(TimeBasedUrlTokenGenerator,
         try:
             customer = Customer.objects.get(pk=view_kwargs['pk'])
             return {'customer': customer}
+        except Customer.DoesNotExist:
+            raise notfound
+
+
+class CustomerSessionTokenGenerator(TimeBasedSessionTokenGenerator):
+    session_key = 'customer_session_token'
+
+    def __init__(self, customer, **kwargs):
+        self.customer = customer
+        super().__init__(**kwargs)
+
+    def extra_hash_data(self):
+        return str(self.customer.pk) + self.customer.hidden_token.hex()
+
+    @classmethod
+    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+        kwargs = super().get_constructor_kwargs(
+            request, view_kwargs=view_kwargs, view_instance=None
+        )
+        notfound = Http404('No customer record found.')
+        try:
+             kwargs['customer'] = Customer.objects.get(pk=view_kwargs['pk'])
+             return kwargs
         except Customer.DoesNotExist:
             raise notfound
 

@@ -727,12 +727,10 @@ class SessionTokenValidator(RequestTokenValidator, abc.ABC):
 
     def get_token(self):
         try:
-            session_key = self.generator_class.session_key
+            assert issubclass(self.generator_class, SessionTokenGenerator)
+            session_key = self.generator_class.get_session_key()
         except AttributeError:
-            raise TypeError(
-                'Generators using SessionTokenValidator '
-                'must define a session_key attribute.'
-            )
+            raise TypeError
         token = self.request.session[session_key]
         # consume the token if necessary
         # only POST requests should trigger this
@@ -788,20 +786,19 @@ class TimeBasedUrlTokenGenerator(
     validator: Type[TimeBasedUrlTokenValidator]
 
 
-class TimeBasedSessionTokenGenerator(
-        TimeBasedTokenGenerator, TokenGeneratorRequestMixin, abc.ABC,
-        validator_base=TimeBasedSessionTokenValidator):
-
+class SessionTokenGenerator(TokenGenerator, TokenGeneratorRequestMixin, abc.ABC,
+                           validator_base=TimeBasedSessionTokenValidator):
     consume_token = True
     validator: Type[TimeBasedSessionTokenValidator]
-    
+
     def __init__(self, request, *args, **kwargs):
         self.request = request
         super().__init__(*args, **kwargs)
 
-    def get_session_key(self):
+    @classmethod
+    def get_session_key(cls):
         try:
-            return self.session_key
+            return cls.session_key
         except AttributeError:
             raise NotImplementedError  # pragma: nocover
 
@@ -812,8 +809,15 @@ class TimeBasedSessionTokenGenerator(
         req.session[self.get_session_key()] = self.bare_token()
 
     @classmethod
-    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+    def get_constructor_kwargs(cls, request, *, view_kwargs,
+                               view_instance=None):
         return {'request': request}
+
+
+class TimeBasedSessionTokenGenerator(
+        TimeBasedTokenGenerator, SessionTokenGenerator, abc.ABC,
+        validator_base=TimeBasedSessionTokenValidator):
+    pass
 
 
 class TimeBasedDBUrlTokenValidator(

@@ -20,6 +20,8 @@ token_testing = [
          views.SimpleCustomerCBV2.as_view(), name='objtok_hidden'),
     path('customer/<int:pk>/<str:token>/',
          views.simple_customer_view, name='simple_cust_view'),
+    path('customer/<int:pk>/',
+         views.simple_customer_session_view, name='simple_cust_session_view'),
 ]
 
 urlpatterns = [
