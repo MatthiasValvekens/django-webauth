@@ -134,11 +134,14 @@ class TokenGenerator(abc.ABC):
             # if validator_base is still None, we take
             # the most basic one available
             validator_base = validator_base or BoundTokenValidator
-            validator = type(
-                'ValidatorFrom' + cls.__name__,
-                (validator_base,),
-                {'generator_class': cls}
-            )
+            if inspect.isabstract(cls):
+                validator = validator_base
+            else:
+                validator = type(
+                    'ValidatorFrom' + cls.__name__,
+                    (validator_base,),
+                    {'generator_class': cls}
+                )
             assert issubclass(validator, BoundTokenValidator)
             cls.validator = validator
 
