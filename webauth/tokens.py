@@ -642,7 +642,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                     self.token = token
                     if pass_token:
                         kwargs['token'] = token
-                    elif pass_validity_info:
+                    if pass_validity_info:
                         kwargs['validity_info'] = validity_info
                     # update kwargs on view object
                     self.kwargs = kwargs
@@ -726,11 +726,8 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
 
     def get_token(self):
-        try:
-            assert issubclass(self.generator_class, SessionTokenGenerator)
-            session_key = self.generator_class.get_session_key()
-        except AttributeError:
-            raise TypeError
+        assert issubclass(self.generator_class, SessionTokenGenerator)
+        session_key = self.generator_class.get_session_key()
         token = self.request.session[session_key]
         # consume the token if necessary
         # only POST requests should trigger this
@@ -738,7 +735,7 @@ class SessionTokenValidator(RequestTokenValidator, abc.ABC):
             if self.generator_class.consume_token \
                     and self.request.method == 'POST':
                 del self.request.session[session_key]
-        except AttributeError:
+        except AttributeError:  # pragma: nocover
             pass
         return token
 
@@ -753,7 +750,7 @@ class DBUrlTokenValidator(UrlTokenValidator, abc.ABC):
             return self.object
         except AttributeError:
             if not isinstance(self.view_instance, SingleObjectMixin):
-                raise ValueError(
+                raise TypeError(
                     'DBUrlTokenValidator requires SingleObjectMixin views'
                 )
 
@@ -799,8 +796,8 @@ class SessionTokenGenerator(TokenGenerator, TokenGeneratorRequestMixin, abc.ABC,
     def get_session_key(cls):
         try:
             return cls.session_key
-        except AttributeError:
-            raise NotImplementedError  # pragma: nocover
+        except AttributeError:  # pragma: nocover
+            raise NotImplementedError
 
     def embed_token(self):
         # The token is session-bound, so this makes sense.
