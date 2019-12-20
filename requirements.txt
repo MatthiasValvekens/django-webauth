@@ -7,4 +7,3 @@ html2text>=2018.1.9
 django-otp>=0.4.3
 bleach>=3.0.2
 htmlmin>=0.1.12
-python-dateutil>=2.7.3
