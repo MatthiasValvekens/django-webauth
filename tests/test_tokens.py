@@ -635,3 +635,52 @@ class TestDBDrivenTokens(TestCase):
         from tests import views
         with self.assertRaises(ValueError):
             views.SimpleTBUrlTokenGenerator.validator.enforce_token('bleh')
+
+
+class TestSignedSerial(TestCase):
+
+    def test_signed_serial(self):
+        tok = models.CustomerSignedSerialGenerator(serial=5).bare_token()
+        self.assertTrue(
+            models.CustomerSignedSerialGenerator(serial=5).validate_token(tok)
+        )
+
+    def test_time_invariance(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            d.set(2019,10,10,1,1,1)
+            tok1 = models.CustomerSignedSerialGenerator(serial=5).bare_token()
+            d.set(2013,9,7,1,1,1)
+            tok2 = models.CustomerSignedSerialGenerator(serial=5).bare_token()
+            self.assertEqual(tok1, tok2)
+
+    def test_serial_mismatch(self):
+        tok = models.CustomerSignedSerialGenerator(serial=5).bare_token()
+        self.assertEqual(
+            models.CustomerSignedSerialGenerator(serial=6).parse_token(tok),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_part_count(self):
+        val = models.CustomerSignedSerialGenerator(serial=5)
+        self.assertEqual(
+            val.parse_token('5-3iyp-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+        self.assertEqual(
+            val.parse_token('dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_malformed_serial(self):
+        val = models.CustomerSignedSerialGenerator(serial=5)
+        self.assertEqual(
+            val.parse_token('***-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )
+
+    def test_bad_hash(self):
+        val = models.CustomerSignedSerialGenerator(serial=5)
+        self.assertEqual(
+            val.parse_token('5-dcb63c6bc16c93c2b130'),
+            MALFORMED_RESPONSE
+        )

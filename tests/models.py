@@ -5,7 +5,7 @@ from webauth import fields as webauth_fields
 from webauth.tokens import (
     ObjectDBUrlTokenValidator, TimeBasedUrlTokenGenerator,
     TimeBasedUrlTokenValidator,
-    TimeBasedSessionTokenGenerator,
+    TimeBasedSessionTokenGenerator, SignedSerialTokenGenerator
 )
 
 
@@ -80,3 +80,7 @@ class CustomerDbEmailCompareTokenValidator(ObjectDBUrlTokenValidator):
 class CustomerDbTokenCompareTokenValidator(ObjectDBUrlTokenValidator):
     token_attribute_name = 'hidden_token'
     is_binary_field = True
+
+
+class CustomerSignedSerialGenerator(SignedSerialTokenGenerator):
+    pass

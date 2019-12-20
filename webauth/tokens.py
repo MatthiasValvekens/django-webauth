@@ -929,14 +929,13 @@ class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator, abc.ABC):
         if serial != self.serial:
             return self.MALFORMED_TOKEN, None
 
-        if constant_time_compare(self.make_token(), token):
+        if constant_time_compare(self.bare_token(), token):
             return self.VALID_TOKEN, None
         else:
             return self.MALFORMED_TOKEN, None
 
     def __init__(self, serial: int):
         super().__init__()
-        self.validator = self.__class__ # just to make the API consistent
         self.serial = serial
 
     def get_token_data(self) -> Iterable:
