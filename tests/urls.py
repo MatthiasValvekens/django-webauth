@@ -9,6 +9,10 @@ token_testing = [
             views.simple_view_with_more_args, name='simple_view_with_more_args'),
     path('simple_cbv/<int:stuff>/<str:foo>/<str:bar>/<str:token>/', 
             views.SimpleCBV.as_view(), name='simple_cbv'),
+    path('objtok_email/<int:pk>/<str:token>/',
+         views.SimpleCustomerCBV.as_view(), name='objtok_email'),
+    path('objtok_hidden/<int:pk>/<str:token>/',
+         views.SimpleCustomerCBV2.as_view(), name='objtok_hidden'),
 ]
 
 urlpatterns = [

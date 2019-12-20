@@ -1,6 +1,7 @@
 from django.db import models
 from webauth import fields as webauth_fields
-from webauth.tokens import TimeBasedTokenGenerator
+from webauth.tokens import TimeBasedTokenGenerator, ObjectDBUrlTokenValidator
+
 
 class Customer(models.Model):
 
@@ -24,3 +25,12 @@ class CustomerTokenGenerator(TimeBasedTokenGenerator):
 
     def extra_hash_data(self):
         return str(self.customer.pk) + self.customer.hidden_token.hex()
+
+
+class CustomerDbEmailCompareTokenValidator(ObjectDBUrlTokenValidator):
+    token_attribute_name = 'email'
+    is_binary_field = False
+
+class CustomerDbTokenCompareTokenValidator(ObjectDBUrlTokenValidator):
+    token_attribute_name = 'hidden_token'
+    is_binary_field = True

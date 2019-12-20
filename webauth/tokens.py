@@ -42,7 +42,7 @@ class TokenValidator(abc.ABC):
         :returns: the parse result and the token's expiration time.
         :rtype: int, datetime.datetime
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: nocover
 
     def validate_token(self, token):
         """Validate a token.
@@ -78,8 +78,7 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
         Function called to retrieve the object on which the token lives.
         Must be implemented by subclasses.
         """
-        # pragma: no cover
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: nocover
 
     def parse_token(self, token):
         """
@@ -150,7 +149,7 @@ class TokenGenerator(abc.ABC):
         token itself. Typically a tuple.
         :return: Iterable
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: nocover
 
     def extra_hash_data(self):
         """
@@ -165,7 +164,7 @@ class TokenGenerator(abc.ABC):
 
     @abc.abstractmethod
     def format_token(self, data, token_hash) -> Tuple[str, object]:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: nocover
 
     def _compute_token_hash(self, data) -> str:
         token_hash = salted_hmac(
@@ -242,6 +241,7 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
         """
 
         try:
+            # noinspection PyArgumentList
             return self.generator_class(**self.generator_kwargs)
         except (KeyError, TypeError) as e:
             raise TypeError(
@@ -524,7 +524,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         """
         Retrieve the token from request data.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: nocover
 
     def instantiate_generator(self):
         gen_class = self.generator_class
@@ -801,7 +801,7 @@ class TimeBasedSessionTokenGenerator(
         try:
             return self.session_key
         except AttributeError:
-            raise NotImplementedError
+            raise NotImplementedError  # pragma: nocover
 
     def embed_token(self):
         # The token is session-bound, so this makes sense.

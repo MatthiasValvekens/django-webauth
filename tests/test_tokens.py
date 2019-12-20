@@ -7,6 +7,7 @@ from django.urls import reverse
 from testfixtures import Replace, test_datetime
 from webauth import tokens
 from . import views as test_views
+from . import models
 
 
 token_datetime = 'webauth.tokens.datetime.datetime'
@@ -392,3 +393,70 @@ class TestRequestTokens(TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404)
             self.assertTrue(b'only valid from' in response.content)
+
+# noinspection DuplicatedCode
+class TestDBDrivenTokens(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        models.Customer(
+            pk=1, name='Foo Bar', email='a@b.com',
+            hidden_token=bytes.fromhex('deadbeefcafebabe')
+        ).save()
+        models.Customer(
+            pk=2, name='Baz Quux', email='boss@example.com',
+            hidden_token=bytes.fromhex('cafebabedeadbeef')
+        ).save()
+
+    def test_object_based_token(self):
+        url1 = reverse(
+            'objtok_email', kwargs={
+                'pk': 1, 'token': 'a@b.com'
+            }
+        )
+        url2 = reverse(
+            'objtok_hidden', kwargs={
+                'pk': 1, 'token': 'deadbeefcafebabe'
+            }
+        )
+
+        for url in (url1, url2):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'Foo Bar')
+
+    def test_object_based_token_mismatch(self):
+        url1 = reverse(
+            'objtok_email', kwargs={
+                'pk': 2, 'token': 'a@b.com'
+            }
+        )
+        url2 = reverse(
+            'objtok_hidden', kwargs={
+                'pk': 2, 'token': 'deadbeefcafebabe'
+            }
+        )
+
+        for url in (url1, url2):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.content, b'Invalid token')
+
+    def test_object_based_token_notfound(self):
+        url1 = reverse(
+            'objtok_email', kwargs={
+                'pk': 100, 'token': 'a@b.com'
+            }
+        )
+        url2 = reverse(
+            'objtok_hidden', kwargs={
+                'pk': 100, 'token': 'deadbeefcafebabe'
+            }
+        )
+
+        for url in (url1, url2):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, b'not found', status_code=404)
