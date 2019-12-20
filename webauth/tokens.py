@@ -667,19 +667,21 @@ class TimeBasedRequestTokenValidator(
 
     def handle_invalid(self, *, token, parse_res, validity_info,
                        redirect_url=None):
+        gone_tpl = self.gone_template_name or self.__class__.gone_template_name
+        early_tpl = self.early_template_name or self.__class__.early_template_name
         try:
             valid_from, valid_until = validity_info
         except (TypeError, ValueError):
             valid_from = valid_until = None
         if parse_res == self.EXPIRED_TOKEN:
             # Return a 410 response
-            if self.gone_template_name is None:
+            if gone_tpl is None:
                 if valid_until is not None:
                     response_str = _(
                         'The token %(token)s expired at '
                         '%(valid_until)s.'
                     ) % { 'token': token, 'valid_until': valid_until}
-                else:
+                else:  # pragma: nocover
                     response_str = _(
                         'The token %(token)s has expired.'
                     ) % {'token': token}
@@ -687,18 +689,18 @@ class TimeBasedRequestTokenValidator(
                 return HttpResponseGone(response_str)
             else:
                 return render(
-                    self.request, self.gone_template_name, status=410
+                    self.request, gone_tpl, status=410
                 )
         elif parse_res == self.NOT_YET_VALID_TOKEN:
             # 404 seems to be the most appropriate
             # (425 Too Early is specific to another HTTP feature)
-            if self.early_template_name is None:
+            if early_tpl is None:
                 if valid_from is not None:
                     response_str = _(
                         'The token %(token)s is only valid from '
                         '%(valid_from)s.'
                     ) % { 'token': token, 'valid_from': valid_from}
-                else:
+                else:  # pragma: nocover
                     response_str = _(
                         'The token %(token)s is not valid yet.'
                     ) % {'token': token}
@@ -706,7 +708,7 @@ class TimeBasedRequestTokenValidator(
                 return HttpResponseNotFound(response_str)
             else:
                 return render(
-                    self.request, self.early_template_name, status=404
+                    self.request, early_tpl, status=404
                 )
         else:
             return super().handle_invalid(

@@ -1,6 +1,11 @@
+from django.http import HttpResponseNotFound
 from django.urls import path, include
 from . import views
 import webauth.urls
+
+def handler404(request, exception=None):
+    exc_str = 'not found' if exception is None else str(exception)
+    return HttpResponseNotFound(exc_str)
 
 token_testing = [
     path('simple_view/<int:stuff>/<str:token>/', views.simple_view, name='simple_view'),
@@ -13,6 +18,8 @@ token_testing = [
          views.SimpleCustomerCBV.as_view(), name='objtok_email'),
     path('objtok_hidden/<int:pk>/<str:token>/',
          views.SimpleCustomerCBV2.as_view(), name='objtok_hidden'),
+    path('customer/<int:pk>/<str:token>/',
+         views.simple_customer_view, name='simple_cust_view'),
 ]
 
 urlpatterns = [

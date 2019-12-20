@@ -276,6 +276,7 @@ class BasicTokenTest(TestCase):
             )
 
 
+# noinspection DuplicatedCode
 class TestRequestTokens(TestCase):
 
     def test_filter_kwargs(self):
@@ -386,13 +387,11 @@ class TestRequestTokens(TestCase):
 
             d.set(2019,10,10,4,0,1)
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 410)
-            self.assertTrue(b'expired' in response.content)
+            self.assertContains(response, 'expired', status_code=410)
 
             d.set(2019,10,10,0,0,0)
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 404)
-            self.assertTrue(b'only valid from' in response.content)
+            self.assertContains(response, 'only valid from', status_code=404)
 
 # noinspection DuplicatedCode
 class TestDBDrivenTokens(TestCase):
@@ -459,4 +458,78 @@ class TestDBDrivenTokens(TestCase):
         for url in (url1, url2):
             with self.subTest(url=url):
                 response = self.client.get(url)
-                self.assertContains(response, b'not found', status_code=404)
+                self.assertContains(
+                    response, b'No customer found matching the query',
+                    status_code=404
+                )
+
+    def test_timebased_token(self):
+        cust = models.Customer.objects.get(pk=1)
+        gen = models.CustomerTokenGenerator(customer=cust)
+        url = reverse(
+            'simple_cust_view', kwargs={
+                'pk': cust.pk, 'token': gen.bare_token()
+            }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'1')
+
+    def test_timebased_token_expired(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            cust = models.Customer.objects.get(pk=1)
+            gen = models.CustomerTokenGenerator(customer=cust)
+            gen.lifespan = 3
+            d.set(2019,10,10,1,1,1)
+            url = reverse(
+                'simple_cust_view', kwargs={
+                    'pk': cust.pk, 'token': gen.bare_token()
+                }
+            )
+            d.set(2019,10,10,2,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'1')
+
+            d.set(2019,10,10,4,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'1')
+
+            d.set(2019,10,10,4,0,1)
+            response = self.client.get(url)
+            self.assertContains(
+                response,
+                'This is a template stating that your token has expired.',
+                status_code=410
+            )
+
+            d.set(2019,10,10,0,0,0)
+            response = self.client.get(url)
+            self.assertContains(
+                response,
+                "This is a template stating that your token isn't valid yet.",
+                status_code=404
+            )
+
+    def test_timebased_token_notfound(self):
+        cust = models.Customer.objects.get(pk=1)
+        tok = models.CustomerTokenGenerator(customer=cust).bare_token()
+        url = reverse(
+            'simple_cust_view', kwargs={ 'pk': 100, 'token': tok }
+        )
+        response = self.client.get(url)
+        self.assertContains(
+            response, 'No customer record found', status_code=404
+        )
+
+    def test_timebased_token_mismatch(self):
+        cust = models.Customer.objects.get(pk=1)
+        tok = models.CustomerTokenGenerator(customer=cust).bare_token()
+        url = reverse(
+            'simple_cust_view', kwargs={ 'pk': 2, 'token': tok }
+        )
+        response = self.client.get(url)
+        self.assertContains(
+            response, 'Invalid', status_code=404
+        )
