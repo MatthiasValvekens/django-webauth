@@ -822,7 +822,7 @@ class TimeBasedSessionTokenGenerator(
 
 
 class TimeBasedDBUrlTokenValidator(
-        DBUrlTokenValidator, TimeBasedTokenValidator):
+        DBUrlTokenValidator, TimeBasedRequestTokenValidator):
 
     def instantiate_generator(self):
         # instantiate a generator using the object we have
