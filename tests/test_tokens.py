@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 import pytz
 import datetime
 from django.test import TestCase
@@ -9,8 +11,6 @@ from webauth import tokens
 from . import views as test_views
 from . import models
 
-
-# TODO: test expiry stuff with timezones
 
 token_datetime = 'webauth.tokens.datetime.datetime'
 
@@ -35,6 +35,98 @@ MALFORMED_RESPONSE = (
     tokens.TimeBasedTokenValidator.MALFORMED_TOKEN, None
 )
 
+def utc_dateseq(d):
+    d.set(2019, 10, 10, 1, 1, 1)
+    yield
+    d.set(2019, 10, 10, 2, 0, 0)
+    yield
+    d.set(2019, 10, 10, 4, 0, 0)
+    yield
+    d.set(2019, 10, 10, 4, 0, 1)
+    yield
+    d.set(2019, 10, 10, 0, 0, 0)
+    yield
+
+def cest_dateseq(d):
+    d.set(2019, 10, 10, 3, 1, 1)
+    yield
+    d.set(2019, 10, 10, 4, 0, 0)
+    yield
+    d.set(2019, 10, 10, 6, 0, 0)
+    yield
+    d.set(2019, 10, 10, 6, 0, 1)
+    yield
+    d.set(2019, 10, 10, 2, 0, 0)
+    yield
+
+def jst_dateseq(d):
+    d.set(2019, 10, 10, 10, 1, 1)
+    yield
+    d.set(2019, 10, 10, 11, 0, 0)
+    yield
+    d.set(2019, 10, 10, 13, 0, 0)
+    yield
+    d.set(2019, 10, 10, 13, 0, 1)
+    yield
+    d.set(2019, 10, 10, 9, 0, 0)
+    yield
+
+def edt_dateseq(d):
+    d.set(2019, 10, 9, 21, 1, 1)
+    yield
+    d.set(2019, 10, 9, 22, 0, 0)
+    yield
+    d.set(2019, 10, 10, 0, 0, 0)
+    yield
+    d.set(2019, 10, 10, 0, 0, 1)
+    yield
+    d.set(2019, 10, 9, 20, 0, 0)
+    yield
+
+@contextmanager
+def dateseq_test(testcase: TestCase, timezone, seq_factory):
+    mocked_dt = Replace(token_datetime, test_datetime(tzinfo=timezone))
+    with mocked_dt as d, testcase.subTest(tz=timezone):
+        yield seq_factory(d)
+
+# cross-timezone testing: generate first date in timezone A,
+#  and then switch to timezone B for consistency checks
+@contextmanager
+def cross_timezone(testcase: TestCase, gen_timezone, gen_seq_factory,
+                   poll_timezone, poll_seq_factory):
+    mocked_gen_dt = Replace(token_datetime, test_datetime(tzinfo=gen_timezone))
+    mocked_poll_dt = Replace(token_datetime, test_datetime(tzinfo=poll_timezone))
+    def mixed_seq():
+        with mocked_gen_dt as d:
+            next(gen_seq_factory(d))
+            yield
+        with mocked_poll_dt as d:
+            poll_seq = poll_seq_factory(d)
+            next(poll_seq)  # skip first entry
+            yield from poll_seq
+
+    with testcase.subTest(tz1=gen_timezone, tz2=poll_timezone):
+        yield mixed_seq()
+
+
+def timezone_seqs(testcase: TestCase):
+    utc = pytz.utc
+    cest = pytz.timezone('Europe/Brussels')
+    jst = pytz.timezone('Asia/Tokyo')
+    edt = pytz.timezone('America/New_York')
+    return [
+        dateseq_test(testcase, utc, utc_dateseq),
+        dateseq_test(testcase, cest, cest_dateseq),
+        dateseq_test(testcase, jst, jst_dateseq),
+        dateseq_test(testcase, edt, edt_dateseq),
+        cross_timezone(testcase, cest, cest_dateseq, utc, utc_dateseq),
+        cross_timezone(testcase, cest, cest_dateseq, jst, jst_dateseq),
+        cross_timezone(testcase, cest, cest_dateseq, edt, edt_dateseq),
+    ]
+
+
+# TODO: also do timezone tests in the BasicTokenTest test case, not just
+#  the expiry checkers below
 
 # noinspection DuplicatedCode
 class BasicTokenTest(TestCase):
@@ -341,32 +433,33 @@ class TestRequestTokens(TestCase):
         self.assertEqual(response.content, b'Invalid token')
 
     def test_simple_view_expired_token(self):
-        with Replace(token_datetime, test_datetime(None)) as d:
-            d.set(2019,10,10,1,1,1)
-            gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
-            gen.lifespan = 3
-            tok = gen.bare_token()
-            url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                next(mocked_dt)
+                gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
+                gen.lifespan = 3
+                tok = gen.bare_token()
+                url = reverse('simple_view', kwargs={'stuff': 5, 'token': tok})
 
-            d.set(2019,10,10,2,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'5')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'5')
 
-            d.set(2019,10,10,4,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'5')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'5')
 
-            d.set(2019,10,10,4,0,1)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 410)
-            self.assertTrue(b'expired' in response.content)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 410)
+                self.assertTrue(b'expired' in response.content)
 
-            d.set(2019,10,10,0,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 404)
-            self.assertTrue(b'only valid from' in response.content)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 404)
+                self.assertTrue(b'only valid from' in response.content)
 
     def test_simple_view_with_more_args(self):
         tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
@@ -390,34 +483,35 @@ class TestRequestTokens(TestCase):
         self.assertEqual(response.content, b'5abcd')
 
     def test_simple_cbv_expired_token(self):
-        with Replace(token_datetime, test_datetime(None)) as d:
-            d.set(2019,10,10,1,1,1)
-            gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
-            gen.lifespan = 3
-            tok = gen.bare_token()
-            url = reverse(
-                'simple_cbv', kwargs={
-                    'stuff': 5, 'token': tok, 'foo': 'abcd', 'bar': 'baz'
-                }
-            )
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                next(mocked_dt)
+                gen = test_views.SimpleTBUrlTokenGenerator(stuff=5)
+                gen.lifespan = 3
+                tok = gen.bare_token()
+                url = reverse(
+                    'simple_cbv', kwargs={
+                        'stuff': 5, 'token': tok, 'foo': 'abcd', 'bar': 'baz'
+                    }
+                )
 
-            d.set(2019,10,10,2,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'5abcd')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'5abcd')
 
-            d.set(2019,10,10,4,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'5abcd')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'5abcd')
 
-            d.set(2019,10,10,4,0,1)
-            response = self.client.get(url)
-            self.assertContains(response, 'expired', status_code=410)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(response, 'expired', status_code=410)
 
-            d.set(2019,10,10,0,0,0)
-            response = self.client.get(url)
-            self.assertContains(response, 'only valid from', status_code=404)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(response, 'only valid from', status_code=404)
 
 # noinspection DuplicatedCode
 class TestDBDrivenTokens(TestCase):
@@ -513,41 +607,42 @@ class TestDBDrivenTokens(TestCase):
         self.assertEqual(response.content, b'1')
 
     def test_timebased_token_expired(self):
-        with Replace(token_datetime, test_datetime(None)) as d:
-            cust = models.Customer.objects.get(pk=1)
-            gen = models.CustomerTokenGenerator(customer=cust)
-            gen.lifespan = 3
-            d.set(2019,10,10,1,1,1)
-            url = reverse(
-                'simple_cust_view', kwargs={
-                    'pk': cust.pk, 'token': gen.bare_token()
-                }
-            )
-            d.set(2019,10,10,2,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'1')
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                cust = models.Customer.objects.get(pk=1)
+                gen = models.CustomerTokenGenerator(customer=cust)
+                gen.lifespan = 3
+                next(mocked_dt)
+                url = reverse(
+                    'simple_cust_view', kwargs={
+                        'pk': cust.pk, 'token': gen.bare_token()
+                    }
+                )
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'1')
 
-            d.set(2019,10,10,4,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'1')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'1')
 
-            d.set(2019,10,10,4,0,1)
-            response = self.client.get(url)
-            self.assertContains(
-                response,
-                'This is a template stating that your token has expired.',
-                status_code=410
-            )
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(
+                    response,
+                    'This is a template stating that your token has expired.',
+                    status_code=410
+                )
 
-            d.set(2019,10,10,0,0,0)
-            response = self.client.get(url)
-            self.assertContains(
-                response,
-                "This is a template stating that your token isn't valid yet.",
-                status_code=404
-            )
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(
+                    response,
+                    "This is a template stating that your token isn't valid yet.",
+                    status_code=404
+                )
 
     def test_timebased_token_notfound(self):
         cust = models.Customer.objects.get(pk=1)
@@ -608,36 +703,38 @@ class TestDBDrivenTokens(TestCase):
         self.assertEqual(response.content, b'Invalid token')
 
     def test_session_token_expired(self):
-        with Replace(token_datetime, test_datetime(None)) as d:
-            d.set(2019,10,10,1,1,1)
-            cust = models.Customer.objects.get(pk=1)
-            gen = models.CustomerSessionTokenGenerator(
-                request=None, customer=cust
-            )
-            gen.lifespan = 3
-            tok = gen.bare_token()
 
-            session = self.client.session
-            session[gen.session_key] = tok
-            session.save()
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                next(mocked_dt)
+                cust = models.Customer.objects.get(pk=1)
+                gen = models.CustomerSessionTokenGenerator(
+                    request=None, customer=cust
+                )
+                gen.lifespan = 3
+                tok = gen.bare_token()
 
-            url = reverse('simple_cust_session_view', kwargs={'pk': 1})
-            d.set(2019,10,10,2,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'1')
-            d.set(2019,10,10,4,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'1')
+                session = self.client.session
+                session[gen.session_key] = tok
+                session.save()
 
-            d.set(2019,10,10,4,0,1)
-            response = self.client.get(url)
-            self.assertContains(response, 'expired', status_code=410)
+                url = reverse('simple_cust_session_view', kwargs={'pk': 1})
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'1')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'1')
 
-            d.set(2019,10,10,0,0,0)
-            response = self.client.get(url)
-            self.assertContains(response, 'only valid from', status_code=404)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(response, 'expired', status_code=410)
+
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertContains(response, 'only valid from', status_code=404)
 
     def test_session_token_consumption(self):
         cust = models.Customer.objects.get(pk=1)
@@ -671,35 +768,36 @@ class TestDBDrivenTokens(TestCase):
         self.assertEqual(response.content, b'Foo Bar')
 
     def test_timebased_objmixin_token_expired(self):
-        with Replace(token_datetime, test_datetime(None)) as d:
-            cust = models.Customer.objects.get(pk=1)
-            gen = models.MixinBasedCustomerTokenGenerator(customer=cust)
-            gen.lifespan = 3
-            d.set(2019,10,10,1,1,1)
-            url = reverse(
-                'objtok_timebased', kwargs={
-                    'pk': cust.pk, 'token': gen.bare_token()
-                }
-            )
-            d.set(2019,10,10,2,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'Foo Bar')
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                cust = models.Customer.objects.get(pk=1)
+                gen = models.MixinBasedCustomerTokenGenerator(customer=cust)
+                gen.lifespan = 3
+                next(mocked_dt)
+                url = reverse(
+                    'objtok_timebased', kwargs={
+                        'pk': cust.pk, 'token': gen.bare_token()
+                    }
+                )
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'Foo Bar')
 
-            d.set(2019,10,10,4,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.content, b'Foo Bar')
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b'Foo Bar')
 
-            d.set(2019,10,10,4,0,1)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 410)
-            self.assertTrue(b'expired' in response.content)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 410)
+                self.assertTrue(b'expired' in response.content)
 
-            d.set(2019,10,10,0,0,0)
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 404)
-            self.assertTrue(b'only valid from' in response.content)
+                next(mocked_dt)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 404)
+                self.assertTrue(b'only valid from' in response.content)
 
     def test_timebased_objmixin_token_notfound(self):
         cust = models.Customer.objects.get(pk=1)
