@@ -226,9 +226,6 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
             if isinstance(self, self.generator):
                 return self
             gen = self.generator_inst = self.instantiate_generator()
-            if gen is None or not isinstance(gen, self.generator):
-                raise TypeError('Could not get hold of a generator instance.')
-
         return gen
 
 
@@ -239,6 +236,9 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
         The default implementation attempts to call ``self.generator``
         with ``self.generator_kwargs``, but subclasses are free to change that.
         """
+        gen_class = self.generator
+        if gen_class is None or not issubclass(gen_class, TokenGenerator):
+            raise TypeError
 
         try:
             # noinspection PyArgumentList
@@ -527,7 +527,8 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
 
     def instantiate_generator(self):
         gen_class = self.generator
-        assert issubclass(gen_class, TokenGeneratorRequestMixin)
+        if gen_class is None or not issubclass(gen_class, TokenGeneratorRequestMixin):
+            raise TypeError
         view_kwargs = dict(self.view_kwargs)
         try:
             kwargs = gen_class.get_constructor_kwargs(
@@ -606,6 +607,8 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                     request=request, view_kwargs=view_kwargs,
                     view_instance=view_instance
                 )
+                if view_instance is not None:
+                    view_instance.validator = validator
                 return validator.handle_token(_view_func, **kwargs)
             return _wrapped_view
 
@@ -636,6 +639,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         decorator_kwargs['pass_token'] = True
 
         class Mixin(View):
+            validator: RequestTokenValidator
             def dispatch(self, request, **view_kwargs):
                 def _dispatch(_request, validity_info=None, token=None, **kwargs):
                     self.validity_info = validity_info

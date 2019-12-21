@@ -275,6 +275,14 @@ class BasicTokenTest(TestCase):
                 evaluator.validate_token(tok1)
             )
 
+    def test_instantiation_error(self):
+        gen = ExtraTBTGenerator(stuff=4)
+        evaluator = gen.validator(
+            generator_kwargs={'stuff': 5, 'irrelevant': 'bleh'}
+        )
+        with self.assertRaises(TypeError):
+            evaluator.instantiate_generator()
+
 
 # noinspection DuplicatedCode
 class TestRequestTokens(TestCase):
@@ -293,6 +301,22 @@ class TestRequestTokens(TestCase):
         val.view_kwargs = dict(view_kwargs)
         gen = val.instantiate_generator()
         self.assertEquals(gen.stuff, 5)
+
+    def test_pass_anything(self):
+        gen_cls = test_views.SimpleUnsafeTBUrlTokenGenerator
+        view_kwargs = {'stuff': 5, 'irrelevant': 1239}
+        gen_kwargs = gen_cls.get_constructor_kwargs(
+            request=None, view_kwargs=dict(view_kwargs)
+        )
+        self.assertTrue('irrelevant' in gen_kwargs)
+        with self.assertRaises(TypeError):
+            gen_cls(**gen_kwargs)
+
+        val = gen_cls.validator(request=None)
+        val.view_kwargs = dict(view_kwargs)
+
+        with self.assertRaises(TypeError):
+            val.instantiate_generator()
 
     def test_simple_view(self):
         tok = test_views.SimpleTBUrlTokenGenerator(stuff=5).bare_token()
@@ -424,6 +448,17 @@ class TestDBDrivenTokens(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.content, b'Foo Bar')
+
+    def test_object_based_token_nogenerator(self):
+        # test an instantiation error
+        url = reverse(
+            'objtok_hidden', kwargs={
+                'pk': 1, 'token': 'deadbeefcafebabe'
+            }
+        )
+
+        with self.assertRaises(TypeError):
+            self.client.put(url)
 
     def test_object_based_token_mismatch(self):
         url1 = reverse(
@@ -635,6 +670,14 @@ class TestDBDrivenTokens(TestCase):
         from tests import views
         with self.assertRaises(ValueError):
             views.SimpleTBUrlTokenGenerator.validator.enforce_token('bleh')
+
+    def test_incomplete_generator_kwargs(self):
+        url = reverse(
+            'bad_customer_view',
+            kwargs={'token': '12-3iyp-dcb63c6bc16c93c2b130'}
+        )
+        with self.assertRaises(TypeError):
+            self.client.get(url)
 
 
 class TestSignedSerial(TestCase):

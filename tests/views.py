@@ -11,6 +11,9 @@ class SimpleTBUrlTokenGenerator(tokens.TimeBasedUrlTokenGenerator):
         self.stuff = stuff
         super().__init__(**kwargs)
 
+class SimpleUnsafeTBUrlTokenGenerator(SimpleTBUrlTokenGenerator):
+    pass_anything = True
+
 
 @SimpleTBUrlTokenGenerator.validator.enforce_token(pass_token=False)
 def simple_view(request, stuff: int):
@@ -44,6 +47,10 @@ class SimpleCustomerCBV2(CustomerDbTokenMixin, SingleObjectMixin):
     def get(self, request, *args, **kwargs):
         return HttpResponse(self.get_object().name)
 
+    def put(self, request, *args, **kwargs):
+        self.validator.instantiate_generator()
+        return HttpResponse('this should error')  # pragma: nocover
+
 
 class BadDbTokenMixin(CustomerDbTokenMixin):
     pass
@@ -65,9 +72,14 @@ class SillySessionTokenValidator(SessionTokenValidator):
 
 @SillySessionTokenValidator.enforce_token(pass_token=False)
 def bad_session_view(request):
-    pass
+    pass  # pragma: nocover
 
 
 @decorators.require_password_confirmation
 def is_password_confirmed(request):
     return HttpResponse('confirmed')
+
+
+@models.CustomerTokenGenerator.validator.enforce_token
+def bad_customer_view(request, token):
+    return HttpResponse(token)  # pragma: nocover

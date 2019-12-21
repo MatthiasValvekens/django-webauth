@@ -49,8 +49,11 @@ class CustomerTokenGenerator(TimeBasedUrlTokenGenerator,
         except Customer.DoesNotExist:
             raise notfound
 
+# To test inheritance magic
+class DummyClass:
+    pass
 
-class CustomerSessionTokenGenerator(TimeBasedSessionTokenGenerator):
+class CustomerSessionTokenGenerator(DummyClass, TimeBasedSessionTokenGenerator):
     session_key = 'customer_session_token'
 
     def __init__(self, customer, **kwargs):
