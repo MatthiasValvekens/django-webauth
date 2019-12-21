@@ -100,9 +100,8 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
 class TokenGenerator(abc.ABC):
 
     secret = settings.SECRET_KEY
-    validator: Type['TokenValidator'] = None
+    validator: Type['BoundTokenValidator'] = None
 
-    # TODO: add validator_base kwarg example
     def __init_subclass__(cls, validator_base=None):
         # As opposed to hasattr(), this ensures that a subclass can only
         # override our inheritance magic by explicitly declaring
@@ -112,12 +111,13 @@ class TokenGenerator(abc.ABC):
 
         if 'validator' not in cls.__dict__:
             if validator_base is None:
-                if issubclass(cls, TokenValidator):
+                if issubclass(cls, BoundTokenValidator):
                     # in this scenario, the generator and validator
                     # are one and the same, so this makes sense
                     # as a default.
                     # We don't even attempt to subclass
                     cls.validator = cls
+                    cls.generator = cls
                     return
                 # see if we can find a validator somewhere
                 # in the superclasses because __init_subclass__
