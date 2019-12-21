@@ -1,10 +1,15 @@
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+
 from webauth import tokens, models as webauth_models
 
 # noinspection DuplicatedCode
 class TestPasswordConfirm(TestCase):
     fixtures = ['users.json']
+
+    # TODO: test expiry
 
     def test_password_confirm(self):
         self.client.login(username='john.doe@example.com', password='password')
@@ -114,3 +119,36 @@ class TestPasswordConfirm(TestCase):
             response, '%s?next=%s' % (reverse('confirm_password'), url)
         )
 
+
+# TODO: test full workflow, expiry, etc.
+class TestPasswordReset(TestCase):
+    fixtures = ['users.json']
+
+    def test_reset_password(self):
+        u = webauth_models.User.objects.get(pk=1)
+        uid = urlsafe_base64_encode(force_bytes(u.pk))
+        tok = tokens.PasswordResetTokenGenerator(u).bare_token()
+        reset_url = reverse(
+            'password_reset_confirm', kwargs={
+                'uidb64': uid, 'token': tok
+            }
+        )
+        # django does this in two steps
+        response = self.client.get(reset_url)
+        reset_intl_url = reverse(
+            'password_reset_confirm', kwargs={
+                'uidb64': uid, 'token': 'set-password'
+            }
+        )
+        self.assertRedirects(
+            response, reset_intl_url, fetch_redirect_response=False
+        )
+        response = self.client.post(
+            reset_intl_url, data = {
+                'new_password1': 'letmein', 'new_password2': 'letmein',
+            }
+        )
+        self.assertRedirects(
+            response, reverse('password_reset_complete'),
+            fetch_redirect_response=False
+        )
