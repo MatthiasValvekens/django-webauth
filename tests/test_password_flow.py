@@ -1,28 +1,10 @@
-import pytz
-import datetime
 from django.test import TestCase
 from django.urls import reverse
 from webauth import tokens, models as webauth_models
 
 # noinspection DuplicatedCode
 class TestPasswordConfirm(TestCase):
-
-    @classmethod
-    def setUpTestData(cls):
-        u = webauth_models.User(
-            pk=1, email='john.doe@example.com', lang='en-gb',
-            last_login=datetime.datetime(2010, 1,1,1,1,1, tzinfo=pytz.utc),
-            is_active=True
-        )
-        u.set_password('password')
-        u.save()
-        u = webauth_models.User(
-            pk=2, email='jane.smith@example.com', lang='en-gb',
-            last_login=datetime.datetime(2014,1,1,1,1,1, tzinfo=pytz.utc),
-            is_active=True
-        )
-        u.set_password('letmein')
-        u.save()
+    fixtures = ['users.json']
 
     def test_password_confirm(self):
         self.client.login(username='john.doe@example.com', password='password')
