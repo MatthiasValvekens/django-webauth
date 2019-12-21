@@ -5,6 +5,8 @@ from django.utils.http import urlsafe_base64_encode
 
 from webauth import tokens, models as webauth_models
 
+from .utils import timezone_seqs
+
 # noinspection DuplicatedCode
 class TestPasswordConfirm(TestCase):
     fixtures = ['users.json']
@@ -152,3 +154,56 @@ class TestPasswordReset(TestCase):
             response, reverse('password_reset_complete'),
             fetch_redirect_response=False
         )
+
+    def test_reset_password_expiry(self):
+        u = webauth_models.User.objects.get(pk=1)
+        gen = tokens.PasswordResetTokenGenerator(u, lifespan=3)
+        for tz in timezone_seqs(self):
+            with tz as mocked_dt:
+                next(mocked_dt)
+                uid = urlsafe_base64_encode(force_bytes(u.pk))
+                tok = gen.bare_token()
+                reset_url = reverse(
+                    'password_reset_confirm', kwargs={
+                        'uidb64': uid, 'token': tok
+                    }
+                )
+                reset_intl_url = reverse(
+                    'password_reset_confirm', kwargs={
+                        'uidb64': uid, 'token': 'set-password'
+                    }
+                )
+                post_data = {
+                    'new_password1': 'letmein', 'new_password2': 'letmein',
+                }
+
+                next(mocked_dt)
+                response = self.client.get(reset_url)
+                self.assertRedirects(
+                    response, reset_intl_url, fetch_redirect_response=False
+                )
+                response = self.client.post(reset_intl_url, data=post_data)
+                self.assertRedirects(
+                    response, reverse('password_reset_complete'),
+                    fetch_redirect_response=False
+                )
+                u.save()  # reset user state
+
+                next(mocked_dt)
+                self.client.get(reset_url)
+                response = self.client.post(reset_intl_url, data=post_data)
+                self.assertRedirects(
+                    response, reverse('password_reset_complete'),
+                    fetch_redirect_response=False
+                )
+                u.save()
+
+                next(mocked_dt)
+                self.client.get(reset_url)
+                response = self.client.post(reset_intl_url, data=post_data)
+                self.assertContains(response, 'expired')
+
+                next(mocked_dt)
+                self.client.get(reset_url)
+                response = self.client.post(reset_intl_url, data=post_data)
+                self.assertContains(response, 'expired')
