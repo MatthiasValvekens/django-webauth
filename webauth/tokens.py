@@ -15,8 +15,6 @@ from django.conf import settings
 from django.views import View
 from django.views.generic.detail import SingleObjectMixin
 
-# FIXME: naming inconsistency: XXX.validator is a class, while XXX.generator
-#  is an instance
 # FIXME: outdated docstrings
 
 LIFESPAN_MAX = 1000000
@@ -140,7 +138,7 @@ class TokenGenerator(abc.ABC):
                 validator = type(
                     'ValidatorFrom' + cls.__name__,
                     (validator_base,),
-                    {'generator_class': cls}
+                    {'generator': cls}
                 )
             assert issubclass(validator, BoundTokenValidator)
             cls.validator = validator
@@ -195,8 +193,8 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
     Validate tokens from a :class:`TokenGenerator`.
     """
 
-    generator: TokenGenerator = None
-    generator_class: Type[TokenGenerator] = TokenGenerator
+    generator_inst: TokenGenerator = None
+    generator: Type[TokenGenerator] = TokenGenerator
 
     def __init__(self, generator_kwargs=None, **kwargs):
         self.generator_kwargs = generator_kwargs or {}
@@ -206,13 +204,13 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
         """
         Fetch the generator to obtain tokens from.
         The default implementation requires that either
-        ``self.generator`` be defined.
+        ``self.generator_inst`` be defined.
 
-        If this object is itself an instance of `self.generator_class`,
+        If this object is itself an instance of `self.generator`,
         this method will return `self` unless `self.generator` is specified.
-        If ``self.generator`` is specified, the value of this
+        If ``self.generator_inst`` is specified, the value of this
         instance attribute is used.
-        If not, this method looks for ``self.generator_class``
+        If not, this method looks for ``self.generator``
         and attempts to instantiate it through
         the :meth:`instantiate_generator` method.
 
@@ -223,12 +221,12 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
         :rtype: TimeBasedTokenGenerator
         """
 
-        gen = self.generator
+        gen = self.generator_inst
         if gen is None:
-            if isinstance(self, self.generator_class):
+            if isinstance(self, self.generator):
                 return self
-            gen = self.generator = self.instantiate_generator()
-            if gen is None or not isinstance(gen, self.generator_class):
+            gen = self.generator_inst = self.instantiate_generator()
+            if gen is None or not isinstance(gen, self.generator):
                 raise TypeError('Could not get hold of a generator instance.')
 
         return gen
@@ -237,14 +235,14 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
     def instantiate_generator(self):
         """
         Attempt to instantiate a generator.
-        Only called if ``self.generator`` is None.
-        The default implementation attempts to call ``self.generator_class``
+        Only called if ``self.generator_inst`` is None.
+        The default implementation attempts to call ``self.generator``
         with ``self.generator_kwargs``, but subclasses are free to change that.
         """
 
         try:
             # noinspection PyArgumentList
-            return self.generator_class(**self.generator_kwargs)
+            return self.generator(**self.generator_kwargs)
         except (KeyError, TypeError) as e:
             raise TypeError(
                 'Could not instantiate generator from kwargs %s' % (
@@ -528,7 +526,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         raise NotImplementedError  # pragma: nocover
 
     def instantiate_generator(self):
-        gen_class = self.generator_class
+        gen_class = self.generator
         assert issubclass(gen_class, TokenGeneratorRequestMixin)
         view_kwargs = dict(self.view_kwargs)
         try:
@@ -536,6 +534,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                 request=self.request, view_kwargs=view_kwargs,
                 view_instance=self.view_instance
             )
+            # noinspection PyArgumentList
             return gen_class(**kwargs)
         except (KeyError, TypeError) as e:
             raise TypeError(
@@ -727,13 +726,13 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
 
     def get_token(self):
-        assert issubclass(self.generator_class, SessionTokenGenerator)
-        session_key = self.generator_class.get_session_key()
+        assert issubclass(self.generator, SessionTokenGenerator)
+        session_key = self.generator.get_session_key()
         token = self.request.session[session_key]
         # consume the token if necessary
         # only POST requests should trigger this
         try:
-            if self.generator_class.consume_token \
+            if self.generator.consume_token \
                     and self.request.method == 'POST':
                 del self.request.session[session_key]
         except AttributeError:  # pragma: nocover
@@ -823,7 +822,8 @@ class TimeBasedDBUrlTokenValidator(
 
     def instantiate_generator(self):
         # instantiate a generator using the object we have
-        return self.generator_class(self.get_object())
+        # noinspection PyArgumentList
+        return self.generator(self.get_object())
 
 
 class ObjectDBUrlTokenValidator(DBUrlTokenValidator, ObjectTokenValidator):
