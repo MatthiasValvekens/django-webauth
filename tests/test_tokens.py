@@ -28,6 +28,12 @@ class ExtraTBTGenerator(SimpleTBTGenerator):
     def extra_hash_data(self):
         return str(self.stuff)
 
+class SillyBoundTokenValidator(tokens.BoundTokenValidator):
+    generator = str
+    def parse_token(self, token):
+        pass
+
+
 simple_validator = SimpleTBTGenerator.validator()
 
 MALFORMED_RESPONSE = (
@@ -287,6 +293,10 @@ class BasicTokenTest(TestCase):
         )
         with self.assertRaises(TypeError):
             evaluator.instantiate_generator()
+
+        gen = SillyBoundTokenValidator()
+        with self.assertRaises(TypeError):
+            gen.instantiate_generator()
 
 
 # noinspection DuplicatedCode
