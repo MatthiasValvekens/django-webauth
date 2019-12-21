@@ -44,3 +44,6 @@ MIDDLEWARE = [
 ]
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
+AUTHENTICATION_BACKENDS = ['webauth.backends.WebauthBackend']
+
+USE_TZ = True
