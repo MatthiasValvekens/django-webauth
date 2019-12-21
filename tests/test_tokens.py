@@ -11,7 +11,7 @@ from . import models
 from .utils import timezone_seqs
 
 
-token_datetime = 'webauth.tokens.datetime.datetime'
+token_datetime = 'webauth.tokens.datetime'
 
 class SimpleTBTGenerator(tokens.TimeBasedTokenGenerator):
     EXAMPLE_TOKEN = '12-3iyp-dcb63c6bc16c93c2b130'

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from testfixtures import Replace, test_datetime
 from django.test import TestCase
 
-token_datetime = 'webauth.tokens.datetime.datetime'
+token_datetime = 'webauth.tokens.datetime'
 
 def utc_dateseq(d):
     d.set(2019, 10, 10, 1, 1, 1)
@@ -56,8 +56,8 @@ def edt_dateseq(d):
     yield
 
 @contextmanager
-def dateseq_test(testcase: TestCase, timezone, seq_factory):
-    mocked_dt = Replace(token_datetime, test_datetime(tzinfo=timezone))
+def dateseq_test(testcase: TestCase, timezone, seq_factory, strict):
+    mocked_dt = Replace(token_datetime, test_datetime(tzinfo=timezone, strict=strict, delta=0))
     with mocked_dt as d, testcase.subTest(tz=timezone):
         yield seq_factory(d)
 
@@ -65,9 +65,9 @@ def dateseq_test(testcase: TestCase, timezone, seq_factory):
 #  and then switch to timezone B for consistency checks
 @contextmanager
 def cross_timezone(testcase: TestCase, gen_timezone, gen_seq_factory,
-                   poll_timezone, poll_seq_factory):
-    mocked_gen_dt = Replace(token_datetime, test_datetime(tzinfo=gen_timezone))
-    mocked_poll_dt = Replace(token_datetime, test_datetime(tzinfo=poll_timezone))
+                   poll_timezone, poll_seq_factory, strict):
+    mocked_gen_dt = Replace(token_datetime, test_datetime(tzinfo=gen_timezone, strict=strict, delta=0))
+    mocked_poll_dt = Replace(token_datetime, test_datetime(tzinfo=poll_timezone, strict=strict, delta=0))
     def mixed_seq():
         with mocked_gen_dt as d:
             next(gen_seq_factory(d))
@@ -81,17 +81,17 @@ def cross_timezone(testcase: TestCase, gen_timezone, gen_seq_factory,
         yield mixed_seq()
 
 
-def timezone_seqs(testcase: TestCase):
+def timezone_seqs(testcase: TestCase, strict=False):
     utc = pytz.utc
     cest = pytz.timezone('Europe/Brussels')
     jst = pytz.timezone('Asia/Tokyo')
     edt = pytz.timezone('America/New_York')
     return [
-        dateseq_test(testcase, utc, utc_dateseq),
-        dateseq_test(testcase, cest, cest_dateseq),
-        dateseq_test(testcase, jst, jst_dateseq),
-        dateseq_test(testcase, edt, edt_dateseq),
-        cross_timezone(testcase, cest, cest_dateseq, utc, utc_dateseq),
-        cross_timezone(testcase, cest, cest_dateseq, jst, jst_dateseq),
-        cross_timezone(testcase, cest, cest_dateseq, edt, edt_dateseq),
+        dateseq_test(testcase, utc, utc_dateseq, strict=strict),
+        dateseq_test(testcase, cest, cest_dateseq, strict=strict),
+        dateseq_test(testcase, jst, jst_dateseq, strict=strict),
+        dateseq_test(testcase, edt, edt_dateseq, strict=strict),
+        cross_timezone(testcase, cest, cest_dateseq, utc, utc_dateseq, strict=strict),
+        cross_timezone(testcase, cest, cest_dateseq, jst, jst_dateseq, strict=strict),
+        cross_timezone(testcase, cest, cest_dateseq, edt, edt_dateseq, strict=strict),
     ]

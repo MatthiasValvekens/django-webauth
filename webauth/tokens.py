@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, date, timedelta
 import inspect
 import abc
 import re
@@ -32,13 +32,13 @@ class TokenValidator(abc.ABC):
         This method should return a tuple containing one of 
         :const:`TokenValidator.VALID_TOKEN`, 
         :const:`TokenValidator.MALFORMED_TOKEN` or 
-        :const:`TokenValidator.EXPIRED_TOKEN` and a :class:`datetime.datetime`
+        :const:`TokenValidator.EXPIRED_TOKEN` and a :class:`datetime`
         object specifying the token's expiration timestamp.
         The expiration time may be ``None`` in all cases.
 
         :param str token: a token string
         :returns: the parse result and the token's expiration time.
-        :rtype: int, datetime.datetime
+        :rtype: int, datetime
         """
         raise NotImplementedError  # pragma: nocover
 
@@ -382,13 +382,13 @@ class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
     same class for different purposes would be interchangeable.
     This is usually not what you want.
 
-    :ivar datetime.datetime origin: the datetime epoch used
+    :ivar datetime origin: the datetime epoch used
     :ivar str secret: the secret passed to :func:`salted_hmac`.
     :ivar int lifespan: the token's lifespan (see :meth:`get_lifespan`)
     """
 
-    origin = datetime.datetime.combine(
-        datetime.date(2001, 1, 1), datetime.datetime.min.time(), tzinfo=pytz.utc
+    origin = datetime.combine(
+        date(2001, 1, 1), datetime.min.time(), tzinfo=pytz.utc
     )
 
     lifespan = 0
@@ -396,7 +396,7 @@ class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
     TBTG_TOKEN_REGEX = r'(\d+)-([a-z0-9]+)-[a-f0-9]{20}'
     TBTG_TOKEN_PATTERN = re.compile(TBTG_TOKEN_REGEX)
 
-    def __init__(self, *, valid_from: Optional[datetime.datetime]=None,
+    def __init__(self, *, valid_from: Optional[datetime]=None,
                  **kwargs):
         self.valid_from = valid_from
         super().__init__(**kwargs)
@@ -428,7 +428,7 @@ class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
         return self._token_data_for_ts(valid_from_ts)
 
     def format_token(self, data, token_hash) \
-            -> Tuple[str, Tuple[datetime.datetime,Optional[datetime.datetime]]]:
+            -> Tuple[str, Tuple[datetime,Optional[datetime]]]:
         lifespan, timestamp = data
         ts_b36 = int_to_base36(timestamp)
         token = "%s-%s-%s" % (lifespan, ts_b36, token_hash)
@@ -441,52 +441,52 @@ class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
         return token, (valid_from, valid_until)
 
     @classmethod
-    def ts_to_delta(cls, ts: int) -> datetime.timedelta:
+    def ts_to_delta(cls, ts: int) -> timedelta:
         """
-        Convert an integer timespan indication to a :class:`datetime.timedelta`
+        Convert an integer timespan indication to a :class:`timedelta`
         object.
         The default implementation assumes the timespan is in hours.
 
         :param int ts: the timespan indication
-        :rtype: datetime.timedelta
+        :rtype: timedelta
         """
-        return datetime.timedelta(seconds=ts * 3600)
+        return timedelta(seconds=ts * 3600)
 
     @classmethod
-    def ts_from_delta(cls, delta: datetime.timedelta) -> int:
+    def ts_from_delta(cls, delta: timedelta) -> int:
         """
-        Convert a :class:`datetime.timedelta` object to an integer timespan.
+        Convert a :class:`timedelta` object to an integer timespan.
         The default implementation assumes the timespan is in hours.
 
-        :param datetime.timedelta delta: the time delta to convert
+        :param timedelta delta: the time delta to convert
         :rtype: int
         """
         return delta.days * 24 + delta.seconds // 3600
 
-    def timestamp_to_datetime(self, ts: int) -> datetime.datetime:
+    def timestamp_to_datetime(self, ts: int) -> datetime:
         """
-        Convert an integer timespan indication to a :class:`datetime.datetime`
+        Convert an integer timespan indication to a :class:`datetime`
         object by adding the result of :meth:`ts_to_delta` to ``self.origin``.
 
         :param int ts: the timespan indication
-        :rtype: datetime.datetime
+        :rtype: datetime
         """
         return self.origin + self.ts_to_delta(ts)
         
-    def time_elapsed(self, dt: datetime.datetime) -> int:
+    def time_elapsed(self, dt: datetime) -> int:
         """
-        Convert a :class:`datetime.datetime` object to an integer timespan
+        Convert a :class:`datetime` object to an integer timespan
         by applying :meth:`ts_from_delta` to the difference of ``dt`` and 
         ``self.origin``.
 
-        :param datetime.datetime dt: the datetime to convert
+        :param datetime dt: the datetime to convert
         :rtype: int
         """
         return self.ts_from_delta(dt - self.origin)
 
     @classmethod
-    def current_time(cls, strip=True) -> datetime.datetime:
-        base = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+    def current_time(cls, strip=True) -> datetime:
+        base = datetime.utcnow().replace(tzinfo=pytz.utc)
         if not strip:
             return base
         return base.replace(minute=0, second=0, microsecond=0)
