@@ -5,7 +5,8 @@ from webauth import fields as webauth_fields
 from webauth.tokens import (
     ObjectDBUrlTokenValidator, TimeBasedUrlTokenGenerator,
     TimeBasedUrlTokenValidator,
-    TimeBasedSessionTokenGenerator, SignedSerialTokenGenerator
+    TimeBasedSessionTokenGenerator, SignedSerialTokenGenerator,
+    TimeBasedDBUrlTokenGenerator,
 )
 
 
@@ -48,6 +49,16 @@ class CustomerTokenGenerator(TimeBasedUrlTokenGenerator,
             return {'customer': customer}
         except Customer.DoesNotExist:
             raise notfound
+
+
+class MixinBasedCustomerTokenGenerator(TimeBasedDBUrlTokenGenerator):
+
+    def __init__(self, customer, **kwargs):
+        self.customer = customer
+        super().__init__(**kwargs)
+
+    def extra_hash_data(self):
+        return str(self.customer.pk) + self.customer.hidden_token.hex()
 
 # To test inheritance magic
 class DummyClass:

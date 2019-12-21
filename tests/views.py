@@ -63,6 +63,12 @@ def simple_customer_view(request, pk):
 def simple_customer_session_view(request, pk):
     return HttpResponse(str(pk))
 
+CustomerTBDbTokenMixin = models.MixinBasedCustomerTokenGenerator.validator.as_mixin()
+class SimpleCustomerCBV3(CustomerTBDbTokenMixin, SingleObjectMixin):
+    queryset = models.Customer.objects.all()
+
+    def get(self, request, *args, **kwargs):
+        return HttpResponse(self.get_object().name)
 
 class SillySessionTokenValidator(SessionTokenValidator):
     generator_class = models.CustomerTokenGenerator

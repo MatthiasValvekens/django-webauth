@@ -18,6 +18,8 @@ token_testing = [
          views.SimpleCustomerCBV.as_view(), name='objtok_email'),
     path('objtok_hidden/<int:pk>/<str:token>/',
          views.SimpleCustomerCBV2.as_view(), name='objtok_hidden'),
+    path('objtok_timebased/<int:pk>/<str:token>/',
+         views.SimpleCustomerCBV3.as_view(), name='objtok_timebased'),
     path('customer/<int:pk>/<str:token>/',
          views.simple_customer_view, name='simple_cust_view'),
     path('customer/<int:pk>/',

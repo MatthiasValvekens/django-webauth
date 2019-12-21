@@ -656,6 +656,72 @@ class TestDBDrivenTokens(TestCase):
         self.assertEqual(response.content, b'1')
         self.assertFalse(gen.session_key in self.client.session)
 
+    def test_timebased_objmixin_token(self):
+        cust = models.Customer.objects.get(pk=1)
+        gen = models.MixinBasedCustomerTokenGenerator(customer=cust)
+        url = reverse(
+            'objtok_timebased', kwargs={
+                'pk': cust.pk, 'token': gen.bare_token()
+            }
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'Foo Bar')
+
+    def test_timebased_objmixin_token_expired(self):
+        with Replace(token_datetime, test_datetime(None)) as d:
+            cust = models.Customer.objects.get(pk=1)
+            gen = models.MixinBasedCustomerTokenGenerator(customer=cust)
+            gen.lifespan = 3
+            d.set(2019,10,10,1,1,1)
+            url = reverse(
+                'objtok_timebased', kwargs={
+                    'pk': cust.pk, 'token': gen.bare_token()
+                }
+            )
+            d.set(2019,10,10,2,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'Foo Bar')
+
+            d.set(2019,10,10,4,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b'Foo Bar')
+
+            d.set(2019,10,10,4,0,1)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 410)
+            self.assertTrue(b'expired' in response.content)
+
+            d.set(2019,10,10,0,0,0)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404)
+            self.assertTrue(b'only valid from' in response.content)
+
+    def test_timebased_objmixin_token_notfound(self):
+        cust = models.Customer.objects.get(pk=1)
+        tok = models.MixinBasedCustomerTokenGenerator(customer=cust).bare_token()
+        url = reverse(
+            'objtok_timebased', kwargs={ 'pk': 100, 'token': tok }
+        )
+        response = self.client.get(url)
+        self.assertContains(
+            response, 'No customer found matching the query',
+            status_code=404
+        )
+
+    def test_timebased_objmixin_token_mismatch(self):
+        cust = models.Customer.objects.get(pk=1)
+        tok = models.MixinBasedCustomerTokenGenerator(customer=cust).bare_token()
+        url = reverse(
+            'objtok_timebased', kwargs={ 'pk': 2, 'token': tok }
+        )
+        response = self.client.get(url)
+        self.assertContains(
+            response, 'Invalid', status_code=404
+        )
+
     def test_bad_view(self):
         url = reverse('bad_db_token_view', kwargs={'token': 'quux'})
         with self.assertRaises(TypeError):
