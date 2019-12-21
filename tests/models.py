@@ -5,7 +5,8 @@ from webauth import fields as webauth_fields
 from webauth.tokens import (
     ObjectDBUrlTokenValidator, TimeBasedUrlTokenGenerator,
     TimeBasedUrlTokenValidator,
-    TimeBasedSessionTokenGenerator, SignedSerialTokenGenerator
+    TimeBasedSessionTokenGenerator, SignedSerialTokenGenerator,
+    TimeBasedDBUrlTokenGenerator,
 )
 
 
@@ -50,7 +51,20 @@ class CustomerTokenGenerator(TimeBasedUrlTokenGenerator,
             raise notfound
 
 
-class CustomerSessionTokenGenerator(TimeBasedSessionTokenGenerator):
+class MixinBasedCustomerTokenGenerator(TimeBasedDBUrlTokenGenerator):
+
+    def __init__(self, customer, **kwargs):
+        self.customer = customer
+        super().__init__(**kwargs)
+
+    def extra_hash_data(self):
+        return str(self.customer.pk) + self.customer.hidden_token.hex()
+
+# To test inheritance magic
+class DummyClass:
+    pass
+
+class CustomerSessionTokenGenerator(DummyClass, TimeBasedSessionTokenGenerator):
     session_key = 'customer_session_token'
 
     def __init__(self, customer, **kwargs):

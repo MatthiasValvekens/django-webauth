@@ -18,6 +18,8 @@ token_testing = [
          views.SimpleCustomerCBV.as_view(), name='objtok_email'),
     path('objtok_hidden/<int:pk>/<str:token>/',
          views.SimpleCustomerCBV2.as_view(), name='objtok_hidden'),
+    path('objtok_timebased/<int:pk>/<str:token>/',
+         views.SimpleCustomerCBV3.as_view(), name='objtok_timebased'),
     path('customer/<int:pk>/<str:token>/',
          views.simple_customer_view, name='simple_cust_view'),
     path('customer/<int:pk>/',
@@ -25,6 +27,7 @@ token_testing = [
     path('bad1/<str:token>/', views.BadDbTokenMixin.as_view(), name='bad_db_token_view'),
     path('bad2', views.bad_session_view, name='bad_session_token_view'),
     path('pwconfirm', views.is_password_confirmed, name='password_confirm_required'),
+    path('badcustview/<str:token>/', views.bad_customer_view, name='bad_customer_view')
 ]
 
 urlpatterns = [

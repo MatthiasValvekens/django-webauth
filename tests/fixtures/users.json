@@ -1,0 +1,24 @@
+[
+  {
+    "model": "webauth.user",
+    "pk": 1,
+    "fields": {
+      "email": "john.doe@example.com",
+      "last_login": "2010-01-01 01:01:01+00:00",
+      "lang": "en-gb",
+      "is_active": true,
+      "password": "md5$mxM76X2iupg7$48a93b8bb5c638b2c9a3c046cb8a74c2"
+    }
+  },
+  {
+    "model": "webauth.user",
+    "pk": 2,
+    "fields": {
+      "email": "jane.smith@example.com",
+      "last_login": "2014-01-01 01:01:01+00:00",
+      "lang": "en-gb",
+      "is_active": true,
+      "password": "md5$O81WOET2kWru$703b4751ee3be06eaa0e4fe8afce51aa"
+    }
+  }
+]

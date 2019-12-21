@@ -45,5 +45,9 @@ MIDDLEWARE = [
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 AUTHENTICATION_BACKENDS = ['webauth.backends.WebauthBackend']
+# The default password hasher is too slow for unit tests
+PASSWORD_HASHERS  = [
+    'django.contrib.auth.hashers.MD5PasswordHasher'
+]
 
 USE_TZ = True

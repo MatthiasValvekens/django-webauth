@@ -53,6 +53,7 @@ def mass_translated_email(
                         )
                         continue
                 except Exception as e:
+                    # noinspection PyTypeChecker
                     logger.error(
                         'Context construction for object %s ' 
                         'failed.' % str(user), exc_info=1
@@ -61,8 +62,14 @@ def mass_translated_email(
                         continue
                     else:
                         raise e
+            elif isinstance(context, dict):
+                the_context = dict(context)
+            elif context is None:
+                the_context = {}
             else:
-                the_context = {} if context is None else dict(context)
+                raise TypeError(
+                    'context type %s does not make sense' % str(type(context))
+                )
             the_context[rcpt_context_object_name] = user
             # necessary for email reset functionality
             email = override_email or user.email
@@ -77,6 +84,7 @@ def mass_translated_email(
                         )
                         continue
                 except Exception as e:
+                    # noinspection PyTypeChecker
                     logger.error(
                         'Attachment construction for object %s '
                         'failed.' % str(user), exc_info=1
