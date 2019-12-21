@@ -1,7 +1,9 @@
-from django.http import HttpResponse
+import datetime
+import logging
+from django.http import HttpResponse, JsonResponse
 from django.views.generic.detail import SingleObjectMixin
 
-from webauth import tokens, decorators
+from webauth import tokens, decorators, api_utils
 from webauth.tokens import SessionTokenValidator
 from . import models
 
@@ -89,3 +91,54 @@ def is_password_confirmed(request):
 @models.CustomerTokenGenerator.validator.enforce_token
 def bad_customer_view(request, token):
     return HttpResponse(token)  # pragma: nocover
+
+
+class TestAPITokenGenerator(api_utils.APITokenGenerator):
+    pass
+
+
+# TODO: figure out how to test x509 stuff properly
+API_AUTH = [
+    api_utils.TokenAuthMechanism(TestAPITokenGenerator),
+    api_utils.UserAuthMechanism('tests.change_customer')
+]
+
+api_logger = logging.getLogger('api_test')
+
+testing_api = api_utils.API(
+    name='testing_api', auth_workflow=API_AUTH, logger=api_logger
+)
+
+class CustomerEndpoint(api_utils.APIEndpoint):
+    api = testing_api
+    endpoint_name = 'customer'
+
+    def get(self, request, *, customer_id: int=None, date_param: datetime.datetime=None):
+
+        qs = models.Customer.objects.filter( )
+        if customer_id is not None:
+            qs = qs.filter(pk=customer_id)
+        res = { 'names': [ c.name for c in qs ] }
+        if date_param is not None:
+            res['date'] = date_param.isoformat()
+        return JsonResponse(res)
+
+    def post(self, request, *, name:str, email: str, lang: str=None, error=False):
+        if error:
+            raise api_utils.APIError('This is an error')
+        c = models.Customer(name=name, email=email)
+        if lang is not None:
+            c.lang = lang
+        c.save()
+        return JsonResponse({}, status=201)
+
+    def put(self, request, *, name:str, email: str, lang: str=None):
+        try:
+            c = models.Customer.objects.get(email=email)
+        except (models.Customer.DoesNotExist, models.Customer.MultipleObjectsReturned) as e:
+            raise api_utils.APIError(e)
+        c.name = name
+        if lang is not None:
+            c.lang = lang
+        c.save()
+        return JsonResponse({}, status=200)
