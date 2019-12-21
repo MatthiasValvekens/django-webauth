@@ -1,11 +1,13 @@
 import datetime
+import inspect
 import abc
 import re
 from functools import wraps
 from typing import Type, Tuple, Iterable, Optional
 
+import pytz
 from django.utils.crypto import constant_time_compare, salted_hmac
-from django.http import HttpResponseGone, Http404, HttpResponseNotFound
+from django.http import HttpResponseGone, HttpResponseNotFound
 from django.utils.http import base36_to_int, int_to_base36
 from django.utils.translation import ugettext_lazy as _
 from django.shortcuts import render, redirect
@@ -16,6 +18,8 @@ from django.views.generic.detail import SingleObjectMixin
 # FIXME: naming inconsistency: XXX.validator is a class, while XXX.generator
 #  is an instance
 # FIXME: outdated docstrings
+
+LIFESPAN_MAX = 1000000
 
 class TokenValidator(abc.ABC):
     """Base class for all token validators."""
@@ -38,9 +42,7 @@ class TokenValidator(abc.ABC):
         :returns: the parse result and the token's expiration time.
         :rtype: int, datetime.datetime
         """
-        raise NotImplementedError(
-            'TokenValidator subclasses must implement `parse_token`'
-        )
+        raise NotImplementedError  # pragma: nocover
 
     def validate_token(self, token):
         """Validate a token.
@@ -76,9 +78,7 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
         Function called to retrieve the object on which the token lives.
         Must be implemented by subclasses.
         """
-        raise NotImplementedError(
-            'Subclasses of ObjectTokenValidator should implement get_object'
-        )
+        raise NotImplementedError  # pragma: nocover
 
     def parse_token(self, token):
         """
@@ -99,30 +99,18 @@ class ObjectTokenValidator(TokenValidator, abc.ABC):
             return TokenValidator.VALID_TOKEN, None
 
 
-class TokenGenerator:
+class TokenGenerator(abc.ABC):
 
     secret = settings.SECRET_KEY
     validator: Type['TokenValidator'] = None
 
-    def __new__(cls, *args, **kwargs):
-        if cls._no_instances:
-            raise TypeError('%s must be subclassed' % cls.__name__)
-        # if __new__ is called with arguments from a subclass that does
-        # not explicitly override it, we'll get those args before
-        # the subclass's __init__ method can consume them.
-        # Since object() does not take any arguments, we have
-        # to discard them explicitly
-        return super().__new__(cls)
-
     # TODO: add validator_base kwarg example
-    def __init_subclass__(cls, validator_base=None, no_instances=False):
+    def __init_subclass__(cls, validator_base=None):
         # As opposed to hasattr(), this ensures that a subclass can only
         # override our inheritance magic by explicitly declaring
         # the relevant attribute
         if 'key_salt' not in cls.__dict__:
             cls.key_salt = cls.__name__
-
-        cls._no_instances = no_instances
 
         if 'validator' not in cls.__dict__:
             if validator_base is None:
@@ -138,6 +126,7 @@ class TokenGenerator:
                 # kwargs are not inherited
                 for ancestor in cls.__mro__[1:]:
                     try:
+                        # noinspection PyUnresolvedReferences
                         validator_base = ancestor.validator
                         break
                     except AttributeError:
@@ -145,21 +134,25 @@ class TokenGenerator:
             # if validator_base is still None, we take
             # the most basic one available
             validator_base = validator_base or BoundTokenValidator
-            validator = type(
-                'ValidatorFrom' + cls.__name__,
-                (validator_base,),
-                {'generator_class': cls}
-            )
+            if inspect.isabstract(cls):
+                validator = validator_base
+            else:
+                validator = type(
+                    'ValidatorFrom' + cls.__name__,
+                    (validator_base,),
+                    {'generator_class': cls}
+                )
             assert issubclass(validator, BoundTokenValidator)
             cls.validator = validator
 
+    @abc.abstractmethod
     def get_token_data(self) -> Iterable:
         """
         Get data that is to be incorporated in the token hash, and in the
         token itself. Typically a tuple.
         :return: Iterable
         """
-        raise NotImplemented
+        raise NotImplementedError  # pragma: nocover
 
     def extra_hash_data(self):
         """
@@ -172,14 +165,14 @@ class TokenGenerator:
         """
         return ''
 
+    @abc.abstractmethod
     def format_token(self, data, token_hash) -> Tuple[str, object]:
-        raise NotImplemented
+        raise NotImplementedError  # pragma: nocover
 
     def _compute_token_hash(self, data) -> str:
+        hash_data = ''.join(str(d) for d in data) + self.extra_hash_data()
         token_hash = salted_hmac(
-            self.key_salt,
-            ''.join(str(d) for d in data) + self.extra_hash_data(),
-            secret=self.secret,
+            self.key_salt, hash_data, secret=self.secret,
         ).hexdigest()[::2]
         assert len(token_hash) == 20
         return token_hash
@@ -195,6 +188,7 @@ class TokenGenerator:
         :rtype: str
         """
         return self.make_token()[0]
+
 
 class BoundTokenValidator(TokenValidator, abc.ABC):
     """
@@ -249,6 +243,7 @@ class BoundTokenValidator(TokenValidator, abc.ABC):
         """
 
         try:
+            # noinspection PyArgumentList
             return self.generator_class(**self.generator_kwargs)
         except (KeyError, TypeError) as e:
             raise TypeError(
@@ -278,6 +273,12 @@ class TimeBasedTokenValidator(BoundTokenValidator):
         try:
             lifespan_str, ts_b36, token_hash = token.split("-")
             lifespan = int(lifespan_str)
+            if lifespan > LIFESPAN_MAX:
+                raise ValueError(
+                    'Token lifespan %d larger than %d' % (
+                        lifespan, LIFESPAN_MAX
+                    )
+                )
         except ValueError:
             return self.MALFORMED_TOKEN, None
 
@@ -286,7 +287,7 @@ class TimeBasedTokenValidator(BoundTokenValidator):
         except ValueError:
             return self.MALFORMED_TOKEN, None
 
-        data = generator._token_data_for_ts(ts)
+        data = generator._token_data_for_ts(ts, lifespan=lifespan)
         token_intact = constant_time_compare(
             generator._compute_token_hash(data), token_hash
         )
@@ -294,30 +295,77 @@ class TimeBasedTokenValidator(BoundTokenValidator):
             return self.MALFORMED_TOKEN, None
 
         # Token is real. Now let's check the timestamps
-        cur_ts = generator.time_elapsed(generator.current_time())
-        valid_from = generator.timestamp_to_datetime(cur_ts)
+        cur_time = generator.current_time(strip=False)
+        valid_from = generator.timestamp_to_datetime(ts)
         # lifespan = 0 => only check valid_from
         if lifespan:
-            expiry_ts = lifespan + ts
-            valid_until = generator.timestamp_to_datetime(expiry_ts)
+            valid_until = generator.timestamp_to_datetime(lifespan + ts)
         else:
-            valid_until = expiry_ts = None
+            valid_until = None
         valid_range = (valid_from, valid_until)
-        if cur_ts < ts:
+        if cur_time < valid_from:
             return self.NOT_YET_VALID_TOKEN, valid_range
-        if expiry_ts is not None and cur_ts > expiry_ts:
+        if valid_until is not None and cur_time > valid_until:
             return self.EXPIRED_TOKEN, valid_range
         return self.VALID_TOKEN, valid_range
 
 
+KWARG_PARAM_KINDS = (
+    inspect.Parameter.KEYWORD_ONLY,
+    inspect.Parameter.POSITIONAL_OR_KEYWORD
+)
+
+def init_kwargs(cls, mro=None):
+    if mro is None:
+        mro = cls.__mro__
+    mro = mro[1:]
+    try:
+        kwargs_to_pass = cls.kwargs_to_pass
+        if kwargs_to_pass is None:
+            set_on_class = True
+        else:
+            return kwargs_to_pass
+    except AttributeError:
+        set_on_class = False
+
+    # pick off kwargs that may not be recognised
+    init_sign = inspect.signature(cls.__init__)
+    has_varkwargs = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD
+        for p in init_sign.parameters.values()
+    )
+
+    kwargs_to_pass = {
+        name for name, param in init_sign.parameters.items()
+        if param.kind in KWARG_PARAM_KINDS and name != 'self'
+    }
+
+    if has_varkwargs and mro:
+        for p in mro:
+            kwargs_to_pass |= init_kwargs(p, mro=mro)
+
+    if set_on_class:
+        cls.kwargs_to_pass = kwargs_to_pass
+
+    return kwargs_to_pass
+
+
 class TokenGeneratorRequestMixin:
+
+    pass_anything = False
+    kwargs_to_pass = None
 
     @classmethod
     def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
+        if not cls.pass_anything:
+            return {
+                k: v for k, v in view_kwargs.items() if k in init_kwargs(cls)
+            }
         return view_kwargs
 
 
-class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
+class TimeBasedTokenGenerator(TokenGenerator, abc.ABC,
+                              validator_base=TimeBasedTokenValidator):
     """
     Inspired by :class:`django.contrib.auth.tokens.PasswordResetTokenGenerator`.
     Instances of this class generate tokens that expire after a given time.
@@ -342,7 +390,7 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
     """
 
     origin = datetime.datetime.combine(
-        datetime.date(2001, 1, 1), datetime.datetime.min.time()
+        datetime.date(2001, 1, 1), datetime.datetime.min.time(), tzinfo=pytz.utc
     )
 
     lifespan = 0
@@ -362,13 +410,23 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
         """
         return self.lifespan
 
-    def _token_data_for_ts(self, ts) -> Tuple:
-        return self.get_lifespan(), ts
+    def _token_data_for_ts(self, ts, lifespan=None) -> Tuple:
+        lifespan = lifespan if lifespan is not None else self.get_lifespan()
+        if lifespan > LIFESPAN_MAX or lifespan < 0:
+            raise ValueError(
+                'Token lifespan %d larger than %d' % (
+                    lifespan, LIFESPAN_MAX
+                )
+            )
+        return lifespan, ts
 
     def get_token_data(self) -> Tuple:
-        valid_from_ts = self.time_elapsed(
-            self.valid_from or self.current_time()
-        )
+        valid_from = getattr(self, 'valid_from',  None) or self.current_time()
+        if valid_from and valid_from < self.origin:
+            raise ValueError(
+                'valid_from timestamp should occur after origin'
+            )
+        valid_from_ts = self.time_elapsed(valid_from)
         return self._token_data_for_ts(valid_from_ts)
 
     def format_token(self, data, token_hash) \
@@ -429,10 +487,11 @@ class TimeBasedTokenGenerator(TokenGenerator, no_instances=True):
         return self.ts_from_delta(dt - self.origin)
 
     @classmethod
-    def current_time(cls) -> datetime.datetime:
-        return datetime.datetime.utcnow().replace(
-            minute=0, second=0, microsecond=0
-        )
+    def current_time(cls, strip=True) -> datetime.datetime:
+        base = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+        if not strip:
+            return base
+        return base.replace(minute=0, second=0, microsecond=0)
 
 
 def _maybe_pass_kwarg(name, pass_kwarg, value, kwargs):
@@ -453,7 +512,6 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
     pass_token = True
     pass_validity_info = False
     redirect_url = None
-    generator_class = None
 
     def __init__(self, *, request, view_kwargs=None, view_instance=None, **kwargs):
         self.request = request
@@ -467,9 +525,22 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
         """
         Retrieve the token from request data.
         """
-        raise NotImplementedError(
-            'Subclasses must implement get_token'
-        )
+        raise NotImplementedError  # pragma: nocover
+
+    def instantiate_generator(self):
+        gen_class = self.generator_class
+        assert issubclass(gen_class, TokenGeneratorRequestMixin)
+        view_kwargs = dict(self.view_kwargs)
+        try:
+            kwargs = gen_class.get_constructor_kwargs(
+                request=self.request, view_kwargs=view_kwargs,
+                view_instance=self.view_instance
+            )
+            return gen_class(**kwargs)
+        except (KeyError, TypeError) as e:
+            raise TypeError(
+                'Could not instantiate generator from view data.', e
+            )
 
     def handle_token(self, view_func, pass_token=None, redirect_url=None,
                      pass_validity_info=None):
@@ -518,7 +589,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                 redirect_url = redirect_url(self.request)
             return redirect(redirect_url)
         else:
-            raise Http404('Invalid token')
+            return HttpResponseNotFound('Invalid token')
 
     @classmethod
     def enforce_token(cls, view_func=None, view_instance=None, **kwargs):
@@ -544,7 +615,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
             return decorator
         elif callable(view_func):
             # called without arguments, so we *are* the decorator
-            return wraps(view_func)(decorator(view_func))
+            return decorator(view_func)
         else:
             raise ValueError('Invalid arguments for enforce_token')
     
@@ -572,7 +643,7 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
                     self.token = token
                     if pass_token:
                         kwargs['token'] = token
-                    elif pass_validity_info:
+                    if pass_validity_info:
                         kwargs['validity_info'] = validity_info
                     # update kwargs on view object
                     self.kwargs = kwargs
@@ -597,19 +668,21 @@ class TimeBasedRequestTokenValidator(
 
     def handle_invalid(self, *, token, parse_res, validity_info,
                        redirect_url=None):
+        gone_tpl = self.gone_template_name or self.__class__.gone_template_name
+        early_tpl = self.early_template_name or self.__class__.early_template_name
         try:
             valid_from, valid_until = validity_info
         except (TypeError, ValueError):
             valid_from = valid_until = None
         if parse_res == self.EXPIRED_TOKEN:
             # Return a 410 response
-            if self.gone_template_name is None:
+            if gone_tpl is None:
                 if valid_until is not None:
                     response_str = _(
                         'The token %(token)s expired at '
                         '%(valid_until)s.'
                     ) % { 'token': token, 'valid_until': valid_until}
-                else:
+                else:  # pragma: nocover
                     response_str = _(
                         'The token %(token)s has expired.'
                     ) % {'token': token}
@@ -617,18 +690,18 @@ class TimeBasedRequestTokenValidator(
                 return HttpResponseGone(response_str)
             else:
                 return render(
-                    self.request, self.gone_template_name, status=410
+                    self.request, gone_tpl, status=410
                 )
         elif parse_res == self.NOT_YET_VALID_TOKEN:
             # 404 seems to be the most appropriate
             # (425 Too Early is specific to another HTTP feature)
-            if self.early_template_name is None:
+            if early_tpl is None:
                 if valid_from is not None:
                     response_str = _(
                         'The token %(token)s is only valid from '
                         '%(valid_from)s.'
                     ) % { 'token': token, 'valid_from': valid_from}
-                else:
+                else:  # pragma: nocover
                     response_str = _(
                         'The token %(token)s is not valid yet.'
                     ) % {'token': token}
@@ -636,7 +709,7 @@ class TimeBasedRequestTokenValidator(
                 return HttpResponseNotFound(response_str)
             else:
                 return render(
-                    self.request, self.early_template_name, status=404
+                    self.request, early_tpl, status=404
                 )
         else:
             return super().handle_invalid(
@@ -650,36 +723,12 @@ class UrlTokenValidator(RequestTokenValidator, abc.ABC):
     def get_token(self):
         return self.view_kwargs['token']
 
-    def instantiate_generator(self):
-        gen_class = self.generator_class
-        assert issubclass(gen_class, TokenGeneratorRequestMixin)
-        view_kwargs = dict(self.view_kwargs)
-        try:
-            del view_kwargs['token']
-        except KeyError:
-            pass
-        try:
-            kwargs = gen_class.get_constructor_kwargs(
-                request=self.request, view_kwargs=view_kwargs,
-                view_instance=self.view_instance
-            )
-            return gen_class(**kwargs)
-        except (KeyError, TypeError) as e:
-            raise TypeError(
-                'Could not instantiate generator from view data.', e
-            )
-
 
 class SessionTokenValidator(RequestTokenValidator, abc.ABC):
 
     def get_token(self):
-        try:
-            session_key = self.generator_class.session_key
-        except AttributeError:
-            raise TypeError(
-                'Generators using SessionTokenValidator '
-                'must define a session_key attribute.'
-            )
+        assert issubclass(self.generator_class, SessionTokenGenerator)
+        session_key = self.generator_class.get_session_key()
         token = self.request.session[session_key]
         # consume the token if necessary
         # only POST requests should trigger this
@@ -687,7 +736,7 @@ class SessionTokenValidator(RequestTokenValidator, abc.ABC):
             if self.generator_class.consume_token \
                     and self.request.method == 'POST':
                 del self.request.session[session_key]
-        except AttributeError:
+        except AttributeError:  # pragma: nocover
             pass
         return token
 
@@ -702,7 +751,7 @@ class DBUrlTokenValidator(UrlTokenValidator, abc.ABC):
             return self.object
         except AttributeError:
             if not isinstance(self.view_instance, SingleObjectMixin):
-                raise ValueError(
+                raise TypeError(
                     'DBUrlTokenValidator requires SingleObjectMixin views'
                 )
 
@@ -735,32 +784,38 @@ class TimeBasedUrlTokenGenerator(
     validator: Type[TimeBasedUrlTokenValidator]
 
 
-class TimeBasedSessionTokenGenerator(
-        TimeBasedTokenGenerator, TokenGeneratorRequestMixin,
-        validator_base=TimeBasedSessionTokenValidator):
-
+class SessionTokenGenerator(TokenGenerator, TokenGeneratorRequestMixin, abc.ABC,
+                           validator_base=TimeBasedSessionTokenValidator):
     consume_token = True
     validator: Type[TimeBasedSessionTokenValidator]
-    
-    @classmethod
-    def from_view_data(cls, request, *_args, **_kwargs):
-        return cls(request)
 
     def __init__(self, request, *args, **kwargs):
         self.request = request
         super().__init__(*args, **kwargs)
 
-    def get_session_key(self):
+    @classmethod
+    def get_session_key(cls):
         try:
-            return self.session_key
-        except AttributeError:
-            raise NotImplemented
+            return cls.session_key
+        except AttributeError:  # pragma: nocover
+            raise NotImplementedError
 
     def embed_token(self):
         # The token is session-bound, so this makes sense.
         # also, this avoids leaking the token through the URL
         req = self.request
         req.session[self.get_session_key()] = self.bare_token()
+
+    @classmethod
+    def get_constructor_kwargs(cls, request, *, view_kwargs,
+                               view_instance=None):
+        return {'request': request}
+
+
+class TimeBasedSessionTokenGenerator(
+        TimeBasedTokenGenerator, SessionTokenGenerator, abc.ABC,
+        validator_base=TimeBasedSessionTokenValidator):
+    pass
 
 
 class TimeBasedDBUrlTokenValidator(
@@ -832,20 +887,16 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
     session_key = 'pwconfirmationtoken'
     consume_token = False
 
+    def __init__(self, request=None, user=None, **kwargs):
+        self.request = request
+        self.user = user or request.user
+        super().__init__(request=request, **kwargs)
+
     def extra_hash_data(self):
-        user = self.request.user
+        user = self.user
         return ''.join([
-            # explicitly include the session key
-            # to mitigate the possibility of replay attacks
-            # TODO: does this actually do anything, and
-            # does it depend on the session engine used?
-            # Probably fairly useless with cookie-backed sessions,
-            # unless they are on a timer.
-            str(self.request.session.session_key),
-            str(user.email),
-            str(user.last_login),
-            str(user.pk),
-            str(user.password),
+            str(user.email), str(user.last_login),
+            str(user.pk), str(user.password),
         ])
 
     def get_lifespan(self):
@@ -855,13 +906,7 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
         # along with the session.
         return 1
 
-    @classmethod
-    def get_constructor_kwargs(cls, request, *, view_kwargs, view_instance=None):
-        return {}
-
-
-class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator,
-                                 no_instances=True):
+class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator, abc.ABC):
     """
     Generate tokens that do not depend on any timestamps.
     Intended to tie primary keys (or any serial number) to a specific
@@ -881,14 +926,13 @@ class SignedSerialTokenGenerator(TokenGenerator, BoundTokenValidator,
         if serial != self.serial:
             return self.MALFORMED_TOKEN, None
 
-        if constant_time_compare(self.make_token(), token):
+        if constant_time_compare(self.bare_token(), token):
             return self.VALID_TOKEN, None
         else:
             return self.MALFORMED_TOKEN, None
 
     def __init__(self, serial: int):
         super().__init__()
-        self.validator = self.__class__ # just to make the API consistent
         self.serial = serial
 
     def get_token_data(self) -> Iterable:

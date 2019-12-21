@@ -103,3 +103,7 @@ media/
 
 # Ignore database files
 *.db
+
+celerybeat.pid
+
+.idea

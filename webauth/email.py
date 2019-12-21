@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import webauth.tasks
 import html2text
 
+# TODO: fail gracefully if this setting is not available
 UNSUBSCRIBE_HEADERS = {
     'List-Unsubscribe': '<mailto:%s?subject=unsubscribe>' % (
         settings.WEBAUTH_UNSUBSCRIBE_EMAIL

@@ -1,4 +1,4 @@
-from dateutil.parser import parse as parse_datetime
+import datetime
 from django.conf import settings
 from django.contrib.auth import logout
 from django.core.exceptions import ImproperlyConfigured
@@ -33,10 +33,8 @@ class InactiveTimeoutMiddleware:
         if request.user.is_authenticated and timeout is not None:
             now = timezone.now()
             try:
-                # TODO: when we upgrade to python 3.7, use native fromisoformat
-                last_req = parse_datetime(
-                    request.session[LAST_REQUEST_SESSION_KEY]
-                )
+                isostr = request.session[LAST_REQUEST_SESSION_KEY]
+                last_req = datetime.datetime.fromisoformat(isostr)
                 delta = (now - last_req).seconds // 60
                 if otp_timeout is not None and delta >= otp_timeout:
                     try:
