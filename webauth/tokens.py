@@ -170,10 +170,9 @@ class TokenGenerator(abc.ABC):
         raise NotImplementedError  # pragma: nocover
 
     def _compute_token_hash(self, data) -> str:
+        hash_data = ''.join(str(d) for d in data) + self.extra_hash_data()
         token_hash = salted_hmac(
-            self.key_salt,
-            ''.join(str(d) for d in data) + self.extra_hash_data(),
-            secret=self.secret,
+            self.key_salt, hash_data, secret=self.secret,
         ).hexdigest()[::2]
         assert len(token_hash) == 20
         return token_hash
@@ -513,7 +512,6 @@ class RequestTokenValidator(BoundTokenValidator, abc.ABC):
     pass_token = True
     pass_validity_info = False
     redirect_url = None
-    generator_class = None
 
     def __init__(self, *, request, view_kwargs=None, view_instance=None, **kwargs):
         self.request = request
