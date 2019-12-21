@@ -1,7 +1,7 @@
 from django.http import HttpResponse
 from django.views.generic.detail import SingleObjectMixin
 
-from webauth import tokens
+from webauth import tokens, decorators
 from webauth.tokens import SessionTokenValidator
 from . import models
 
@@ -66,3 +66,8 @@ class SillySessionTokenValidator(SessionTokenValidator):
 @SillySessionTokenValidator.enforce_token(pass_token=False)
 def bad_session_view(request):
     pass
+
+
+@decorators.require_password_confirmation
+def is_password_confirmed(request):
+    return HttpResponse('confirmed')

@@ -887,20 +887,16 @@ class PasswordConfirmationTokenGenerator(TimeBasedSessionTokenGenerator):
     session_key = 'pwconfirmationtoken'
     consume_token = False
 
+    def __init__(self, request=None, user=None, **kwargs):
+        self.request = request
+        self.user = user or request.user
+        super().__init__(request=request, **kwargs)
+
     def extra_hash_data(self):
-        user = self.request.user
+        user = self.user
         return ''.join([
-            # explicitly include the session key
-            # to mitigate the possibility of replay attacks
-            # TODO: does this actually do anything, and
-            # does it depend on the session engine used?
-            # Probably fairly useless with cookie-backed sessions,
-            # unless they are on a timer.
-            str(self.request.session.session_key),
-            str(user.email),
-            str(user.last_login),
-            str(user.pk),
-            str(user.password),
+            str(user.email), str(user.last_login),
+            str(user.pk), str(user.password),
         ])
 
     def get_lifespan(self):

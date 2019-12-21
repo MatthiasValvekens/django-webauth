@@ -24,6 +24,7 @@ token_testing = [
          views.simple_customer_session_view, name='simple_cust_session_view'),
     path('bad1/<str:token>/', views.BadDbTokenMixin.as_view(), name='bad_db_token_view'),
     path('bad2', views.bad_session_view, name='bad_session_token_view'),
+    path('pwconfirm', views.is_password_confirmed, name='password_confirm_required'),
 ]
 
 urlpatterns = [
