@@ -284,6 +284,14 @@ class API:
             for name, cls in self.endpoint_registry.items()
         ]
 
+    def register(self, endpoint_class: Type['APIEndpoint']):
+        if endpoint_class.api is not None and endpoint_class.api is not self:
+            raise TypeError(
+                'Endpoint %s is already registered to an api' % endpoint_class
+            )
+        endpoint_class.api = self
+        self.endpoint_registry[endpoint_class.endpoint_name] = endpoint_class
+
     def log(self, level, msg, *args, term_uid, term_display_name,
             auth_basis=None, endpoint: 'APIEndpoint'=None, **kwargs):
         if endpoint is None:
@@ -309,12 +317,18 @@ class APIEndpoint(View):
 
     def __init_subclass__(cls, *args, abstract=False, **kwargs):
         if not abstract:
-            if cls.api is None:
-                raise TypeError('API endpoint must set api attr')
             if cls.endpoint_name is None:
                 raise TypeError('API endpoint must set endpoint_name attr')
-            cls.api.endpoint_registry[cls.endpoint_name] = cls
+            if cls.api is not None:
+                cls.api.register(cls)
         super().__init_subclass__(*args, **kwargs)
+
+    def __init__(self):
+        if self.__class__.api is None:
+            raise TypeError('Endpoint not registered to an API')
+        self.auth_errors = {}
+        self.auth_result: Optional[APIAccessStatus] = None
+        super().__init__()
 
     def http_method_not_allowed(self, request, *args, **kwargs):
         # failure response for Method Not Allowed
@@ -325,11 +339,6 @@ class APIEndpoint(View):
             },
             status=405
         )
-
-    def __init__(self):
-        self.auth_errors = {}
-        self.auth_result: Optional[APIAccessStatus] = None
-        super().__init__()
 
     @property
     def auth_workflow(self):
