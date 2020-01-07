@@ -6,12 +6,14 @@ from bs4 import BeautifulSoup
 import webauth.tasks
 import html2text
 
-# TODO: fail gracefully if this setting is not available
-UNSUBSCRIBE_HEADERS = {
-    'List-Unsubscribe': '<mailto:%s?subject=unsubscribe>' % (
-        settings.WEBAUTH_UNSUBSCRIBE_EMAIL
-    )
-}
+try:
+    UNSUBSCRIBE_HEADERS = {
+        'List-Unsubscribe': '<mailto:%s?subject=unsubscribe>' % (
+            settings.WEBAUTH_UNSUBSCRIBE_EMAIL
+        )
+    }
+except AttributeError:
+    UNSUBSCRIBE_HEADERS = {}
 
 
 # TODO: make celery dependency optional in standalone webauth

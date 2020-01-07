@@ -21,7 +21,6 @@ from django.utils.translation import ugettext_lazy as _, ugettext_noop
 from django.views import View
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
 
-from webauth import models
 from webauth.tokens import (
     TimeBasedTokenGenerator, TimeBasedTokenValidator,
     TokenValidator,
@@ -234,6 +233,7 @@ class UserAuthMechanism(APIAuthMechanism):
         self.perm_dict = perm_dict or {}  # type: Dict[str, str]
 
     def __call__(self, request, *_args, **_kwargs):
+        from webauth import models
         user: models.User = request.user
         if user.is_authenticated:
             relevant_perm = self.perm_dict.get(
@@ -398,6 +398,7 @@ class APIEndpoint(View):
         to be consumed by an API endpoint should be included in the request body.
         This helps keeping the endpoint URLs clean and consistent.
         """
+        # TODO: handle dataclasses, List args, etc. recursively
 
         if request.method.lower() in self.http_method_names:
             handler = getattr(
