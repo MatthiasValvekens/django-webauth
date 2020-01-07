@@ -421,10 +421,16 @@ class APIEndpoint(View):
                 if raw_value is not None:
                     if argument_type is not inspect.Parameter.empty:
                         if argument_type is datetime.datetime:
-                            utc_ts = datetime.datetime.fromisoformat(
+                            ts = datetime.datetime.fromisoformat(
                                 str(raw_value)
                             )
-                            yield name, utc_ts.replace(tzinfo=pytz.utc)
+                            if ts.tzinfo is None:
+                                # naive datetime - treat as UTC
+                                ts = pytz.utc.localize(ts)
+                            else:
+                                # replace timezone by UTC
+                                ts = ts.astimezone(pytz.utc)
+                            yield name, ts
                         else:
                             yield name, argument_type(raw_value)
                     else:
