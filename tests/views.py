@@ -113,7 +113,11 @@ dummy = api_utils.API(
 class DummyAPIEndpoint(api_utils.APIEndpoint):
     api = dummy
     endpoint_name = 'dummy'
+
     def get(self, request, *, blah: str):
+        return JsonResponse({ 'blah': blah})
+
+    def post(self, request, *, blah: str):
         return JsonResponse({ 'blah': blah})
 
 testing_api = api_utils.API(

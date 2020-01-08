@@ -11,8 +11,20 @@ from . import models
 
 class DummyAuthTest(TestCase):
 
-    def testDummyAuth(self):
+    def setUp(self):
+        self.client.handler.enforce_csrf_checks = True
+
+    def test_dummy_auth_get(self):
         response = self.client.get(
+            test_views.DummyAPIEndpoint.url(), data={
+                'blah': 'hi there'
+            }, content_type='application/json'
+        )
+        payload = json.loads(response.content)
+        self.assertTrue(payload['blah'] == 'hi there')
+
+    def test_dummy_auth_post(self):
+        response = self.client.post(
             test_views.DummyAPIEndpoint.url(), data={
                 'blah': 'hi there'
             }, content_type='application/json'
@@ -25,6 +37,8 @@ class CustomerTestingAPI(TestCase):
     fixtures = ['users.json']
 
     # TODO: further API token tests (expiry/malformed/...)
+    def setUp(self):
+        self.client.handler.enforce_csrf_checks = True
 
     @classmethod
     def setUpTestData(cls):
