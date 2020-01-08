@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Optional, Type, List, Dict
 
 import pytz
@@ -75,9 +76,10 @@ def parse_dn(dn):
     return {k.upper(): v for k, v in pairs}
 
 
-API_ACCESS_DUNNO = 0
-API_ACCESS_GRANTED = 1
-API_ACCESS_DENIED = 2
+class APIAccessStatusCode(IntEnum):
+    API_ACCESS_DUNNO = 0
+    API_ACCESS_GRANTED = 1
+    API_ACCESS_DENIED = 2
 
 
 class APIAuthMechanism(abc.ABC):
@@ -90,7 +92,7 @@ class APIAuthMechanism(abc.ABC):
 
 @dataclass
 class APIAccessStatus:
-    code: int
+    code: APIAccessStatusCode
     msg: str = ''
     term_display_name: str = ''
     term_uid: str = ''
@@ -120,7 +122,7 @@ class X509AuthMechanism(APIAuthMechanism):
             dn = request.META['HTTP_X_SSL_USER_DN']
         except KeyError:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO,
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
                 msg='No SSL header found'
             )
         try:
@@ -131,16 +133,17 @@ class X509AuthMechanism(APIAuthMechanism):
             for k, v in self.cert_dn_requirements.items():
                 if dn_parts[k.upper()] != v:
                     return APIAccessStatus(
-                        code=API_ACCESS_DENIED,
+                        code=APIAccessStatusCode.API_ACCESS_DENIED,
                         msg='Unauthorised X509 DN spec'
                     )
         except (KeyError, ValueError):
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='X509 spec is not properly formatted'
             )
         return APIAccessStatus(
-            code=API_ACCESS_GRANTED, term_uid=uid, term_display_name=ident
+            code=APIAccessStatusCode.API_ACCESS_GRANTED,
+            term_uid=uid, term_display_name=ident
         )
 
 
@@ -184,21 +187,23 @@ class TokenAuthMechanism(APIAuthMechanism):
         api_token = api_token or _get_raw_param(request, 'api_token')
         if api_token is None:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='No auth token supplied'
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                msg='No auth token supplied'
             )
 
         try:
             token_string = urlsafe_base64_decode(api_token).decode('utf-8')
         except (ValueError, AttributeError, TypeError):
             return APIAccessStatus(
-                code=API_ACCESS_DENIED, msg='Could not decode base64 token'
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
+                msg='Could not decode base64 token'
             )
 
         try:
             ident, uid, bare_token = token_string.split(':')
         except ValueError:
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='Improperly formatted token string'
             )
 
@@ -208,17 +213,18 @@ class TokenAuthMechanism(APIAuthMechanism):
 
         if result == TokenValidator.VALID_TOKEN:
             return APIAccessStatus(
-                code=API_ACCESS_GRANTED,
+                code=APIAccessStatusCode.API_ACCESS_GRANTED,
                 term_uid=uid, term_display_name=ident
             )
         elif result == TimeBasedTokenValidator.EXPIRED_TOKEN:
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='Access token expired'
             )
         else:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='Invalid access token'
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                msg='Invalid access token'
             )
 
 
@@ -245,17 +251,18 @@ class UserAuthMechanism(APIAuthMechanism):
                 except KeyError:
                     uid = request.session[SESSION_UID_KEY] = uuid.uuid4().hex
                 return APIAccessStatus(
-                    code=API_ACCESS_GRANTED,
+                    code=APIAccessStatusCode.API_ACCESS_GRANTED,
                     term_uid=uid, term_display_name=user.username
                 )
             else:
                 return APIAccessStatus(
-                    code=API_ACCESS_DENIED,
+                    code=APIAccessStatusCode.API_ACCESS_DENIED,
                     msg='User does not have the appropriate permissions'
                 )
         else:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='User not logged in'
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                msg='User not logged in'
             )
 
 
@@ -353,14 +360,15 @@ class APIEndpoint(View):
             json_name = auth_method.json_name or auth_method.__class__.__name__
             result.issuer = auth_method
             result.issuer_name = json_name
-            if result.code != API_ACCESS_GRANTED:
+            if result.code != APIAccessStatusCode.API_ACCESS_GRANTED:
                 self.auth_errors[json_name] = result.msg
-            if result.code == API_ACCESS_DENIED and self.auth_fail_on_deny:
+            if result.code == APIAccessStatusCode.API_ACCESS_DENIED \
+                    and self.auth_fail_on_deny:
                 if self.gui_view:
                     raise PermissionDenied()
                 else:
                     return False
-            if result.code == API_ACCESS_GRANTED:
+            if result.code == APIAccessStatusCode.API_ACCESS_GRANTED:
                 self.auth_result = result
                 return True
         return False
