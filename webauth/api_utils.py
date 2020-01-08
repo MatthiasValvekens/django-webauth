@@ -100,6 +100,16 @@ class APIAccessStatus:
     issuer_name: str=''
 
 
+class DummyAuthMechanism(APIAuthMechanism):
+
+    def __call__(self, request, *args, **kwargs) -> 'APIAccessStatus':
+        return APIAccessStatus(
+            code=APIAccessStatusCode.API_ACCESS_GRANTED,
+            term_uid=uuid.uuid4().hex,
+            term_display_name='dummy'
+        )
+
+
 class X509AuthMechanism(APIAuthMechanism):
     """
     Attempt to authenticate a ticketing terminal via SSL.
