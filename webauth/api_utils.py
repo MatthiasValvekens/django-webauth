@@ -101,6 +101,7 @@ class APIAccessStatus:
 
 
 class DummyAuthMechanism(APIAuthMechanism):
+    csrf_exempt = True
 
     def __call__(self, request, *args, **kwargs) -> 'APIAccessStatus':
         return APIAccessStatus(
