@@ -28,7 +28,8 @@ token_testing = [
     path('bad2', views.bad_session_view, name='bad_session_token_view'),
     path('pwconfirm', views.is_password_confirmed, name='password_confirm_required'),
     path('badcustview/<str:token>/', views.bad_customer_view, name='bad_customer_view'),
-    path('api/', include(views.testing_api.endpoint_urls))
+    path('api/', include(views.testing_api.endpoint_urls)),
+    path('dummy_api/', include(views.dummy.endpoint_urls))
 ]
 
 urlpatterns = [

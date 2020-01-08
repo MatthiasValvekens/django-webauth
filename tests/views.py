@@ -105,6 +105,17 @@ API_AUTH = [
 
 api_logger = logging.getLogger('api_test')
 
+
+dummy = api_utils.API(
+    name='dummy_api', auth_workflow=[api_utils.DummyAuthMechanism()],
+    logger=api_logger
+)
+class DummyAPIEndpoint(api_utils.APIEndpoint):
+    api = dummy
+    endpoint_name = 'dummy'
+    def get(self, request, *, blah: str):
+        return JsonResponse({ 'blah': blah})
+
 testing_api = api_utils.API(
     name='testing_api', auth_workflow=API_AUTH, logger=api_logger
 )

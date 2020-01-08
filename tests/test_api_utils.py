@@ -9,6 +9,17 @@ from . import views as test_views
 from . import models
 
 
+class DummyAuthTest(TestCase):
+
+    def testDummyAuth(self):
+        response = self.client.get(
+            test_views.DummyAPIEndpoint.url(), data={
+                'blah': 'hi there'
+            }, content_type='application/json'
+        )
+        payload = json.loads(response.content)
+        self.assertTrue(payload['blah'] == 'hi there')
+
 # noinspection DuplicatedCode
 class CustomerTestingAPI(TestCase):
     fixtures = ['users.json']
