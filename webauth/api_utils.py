@@ -86,7 +86,8 @@ class APIAuthMechanism(abc.ABC):
     csrf_exempt = False
     json_name = None
 
-    def __call__(self, request, *args, **kwargs) -> 'APIAccessStatus':
+    def __call__(self, request, *args, endpoint: 'APIEndpoint', **kwargs) \
+            -> 'APIAccessStatus':
         raise NotImplementedError
 
 
@@ -367,7 +368,7 @@ class APIEndpoint(View):
 
     def auth(self, request, *args, **kwargs) -> bool:
         for auth_method in self.auth_workflow:
-            result = auth_method(request, *args, **kwargs)
+            result = auth_method(request, *args, endpoint=self, **kwargs)
             json_name = auth_method.json_name or auth_method.__class__.__name__
             result.issuer = auth_method
             result.issuer_name = json_name
