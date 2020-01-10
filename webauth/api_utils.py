@@ -7,7 +7,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Optional, Type, List, Dict
+from typing import Optional, Type, List, Dict, Tuple, Set, Iterable, Union
 
 import pytz
 from django.conf import settings
@@ -242,22 +242,52 @@ class TokenAuthMechanism(APIAuthMechanism):
 
 SESSION_UID_KEY = 'ticketing_term_uid'
 
+# TODO: integrate 'otp required' logic
+
+class UserAuthMap:
+
+    default_perm_set: Set[str] = None
+    _access_dict: Dict[Tuple[str, Optional[str]], Set[str]] = None
+
+    def __init__(self, access_dict: Dict[Tuple[str, Optional[str]], Iterable[str]] ,
+                 default_perm_set: Union[Set[str], str]=None):
+        self._access_dict = {
+            (endpoint_name, method.casefold() if method is not None else None):
+                frozenset(perm_set)
+            for ((endpoint_name, method), perm_set) in access_dict.items()
+        }
+        if isinstance(default_perm_set, str):
+            self.default_perm_set = {default_perm_set}
+        else:
+            self.default_perm_set = default_perm_set
+
+    def can_access(self, user, endpoint: str, method: str):
+        from webauth.models import User
+        assert isinstance(user, User)
+        perms = self._access_dict.get((endpoint, method.casefold()))
+        if perms is None:
+            # try with method = None as a default
+            perms = self._access_dict.get((endpoint, None), self.default_perm_set)
+        # set default_perm_set to the empty set to allow access by default
+        if perms is None:
+            return False
+        return user.has_perms(perms)
+
 
 class UserAuthMechanism(APIAuthMechanism):
     json_name = 'user'
 
-    def __init__(self, default_perm_code: str, perm_dict: Dict[str, str]=None):
-        self.default_perm_code = default_perm_code
-        self.perm_dict = perm_dict or {}  # type: Dict[str, str]
+    def __init__(self, auth_map: UserAuthMap):
+        self.auth_map = auth_map
 
-    def __call__(self, request, *_args, **_kwargs):
+    def __call__(self, request, *_args, endpoint, **_kwargs):
         from webauth import models
         user: models.User = request.user
         if user.is_authenticated:
-            relevant_perm = self.perm_dict.get(
-                request.method, self.default_perm_code
+            can_access = self.auth_map.can_access(
+                request.user, endpoint.endpoint_name, request.method
             )
-            if user.has_perm(relevant_perm):
+            if can_access:
                 try:
                     uid = request.session[SESSION_UID_KEY]
                 except KeyError:

@@ -98,9 +98,12 @@ class TestAPITokenGenerator(api_utils.APITokenGenerator):
 
 
 # TODO: figure out how to test x509 stuff properly
+# TODO: test auth maps properly
 API_AUTH = [
     api_utils.TokenAuthMechanism(TestAPITokenGenerator),
-    api_utils.UserAuthMechanism('tests.change_customer')
+    api_utils.UserAuthMechanism(
+        api_utils.UserAuthMap({}, default_perm_set='tests.change_customer')
+    )
 ]
 
 api_logger = logging.getLogger('api_test')
