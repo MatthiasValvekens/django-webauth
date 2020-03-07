@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from typing import Optional, Type, List, Dict, Tuple, Set, Iterable, Union
 
 import pytz
@@ -242,18 +242,84 @@ class TokenAuthMechanism(APIAuthMechanism):
 
 SESSION_UID_KEY = 'ticketing_term_uid'
 
-# TODO: integrate 'otp required' logic
+API_REQUIRE_OTP = object()
 
+class UserStatus(IntFlag):
+    anonymous = 0
+    authenticated = 1
+    otp_verified = 3  # user can't be verified without being authenticated
+    staff = 4
+
+    @staticmethod
+    def user_status(user):
+        if not user.is_authenticated:
+            return UserStatus.anonymous
+
+        try:
+            if user.is_verified():
+                result = UserStatus.otp_verified
+        except AttributeError:
+            # django-otp not installed, or middleware not running
+            pass
+
+        result = UserStatus.authenticated
+        if user.is_staff:
+            return result | UserStatus.staff
+        else:
+            return result
+
+    def verify(self, user):
+        return bool(self & UserStatus.user_status(user))
+
+@dataclass(frozen=True)
+class PermissionSpec:
+    permissions: frozenset
+    auth_requirement: UserStatus
+
+    @staticmethod
+    def declare(auth_requirement: UserStatus, *args):
+        return PermissionSpec(
+            permissions=frozenset(args), auth_requirement=auth_requirement
+        )
+
+# an (endpoint, method) pair
+EndpointAccessSpec = Tuple[str, Optional[str]]
+FlexPermissionSpec = Union[Iterable[str], PermissionSpec]
+
+# Example of an auth map access dict:
+# {
+#    ('submit_intlpayments', None): {'lukweb.add_internalpayment'},
+#    ('submit_intldebts', None): {'lukweb.add_internaldebtitem'},
+#    ('submit_transfers', 'GET'): {
+#        'lukweb.view_internalpayment', 'lukweb.view_reservationpayment'
+#    }
+#    ('submit_transfers', 'POST'): {
+#        'lukweb.add_internalpayment', 'lukweb.add_reservationpayment'
+#    }
+#}
+
+# TODO add unit tests for UserAuthMap edge cases
 class UserAuthMap:
 
     default_perm_set: Set[str] = None
-    _access_dict: Dict[Tuple[str, Optional[str]], Set[str]] = None
+    default_auth_req: UserStatus = UserStatus.authenticated
+    _access_dict: Dict[EndpointAccessSpec, PermissionSpec] = None
 
-    def __init__(self, access_dict: Dict[Tuple[str, Optional[str]], Iterable[str]] ,
+    def __init__(self, access_dict: Dict[EndpointAccessSpec, FlexPermissionSpec],
                  default_perm_set: Union[Set[str], str]=None):
+
+        def unflex(perm_spec: FlexPermissionSpec) -> PermissionSpec:
+            if isinstance(perm_spec, PermissionSpec):
+                return perm_spec
+            else:
+                return PermissionSpec(
+                    permissions=frozenset(perm_spec),
+                    auth_requirement=self.default_auth_req
+                )
+
         self._access_dict = {
             (endpoint_name, method.casefold() if method is not None else None):
-                frozenset(perm_set)
+                unflex(perm_set)
             for ((endpoint_name, method), perm_set) in access_dict.items()
         }
         if isinstance(default_perm_set, str):
@@ -264,14 +330,24 @@ class UserAuthMap:
     def can_access(self, user, endpoint: str, method: str):
         from webauth.models import User
         assert isinstance(user, User)
-        perms = self._access_dict.get((endpoint, method.casefold()))
-        if perms is None:
+        perm_spec = self._access_dict.get((endpoint, method.casefold()))
+        if perm_spec is None:
             # try with method = None as a default
-            perms = self._access_dict.get((endpoint, None), self.default_perm_set)
+            perm_spec = self._access_dict.get((endpoint, None))
+        if perm_spec is None:
+            perms = self.default_perm_set
+            auth_req = self.default_auth_req
+        else:
+            perms = perm_spec.permissions
+            auth_req = perm_spec.auth_requirement
+
         # set default_perm_set to the empty set to allow access by default
+        #  None means "always deny on fallthrough"
         if perms is None:
             return False
-        return user.has_perms(perms)
+        # type checker doesn't know about django-otp's monkeypatching
+        # noinspection PyTypeChecker
+        return auth_req.verify(user) and user.has_perms(perms)
 
 
 class UserAuthMechanism(APIAuthMechanism):
