@@ -97,15 +97,6 @@ class TestAPITokenGenerator(api_utils.APITokenGenerator):
     pass
 
 
-# TODO: figure out how to test x509 stuff properly
-# TODO: test auth maps properly
-API_AUTH = [
-    api_utils.TokenAuthMechanism(TestAPITokenGenerator),
-    api_utils.UserAuthMechanism(
-        api_utils.UserAuthMap({}, default_perm_set='tests.change_customer')
-    )
-]
-
 api_logger = logging.getLogger('api_test')
 
 
@@ -123,6 +114,36 @@ class DummyAPIEndpoint(api_utils.APIEndpoint):
     def post(self, request, *, blah: str):
         return JsonResponse({ 'blah': blah})
 
+# TODO: figure out how to test x509 stuff properly (docker?)
+advanced_auth_map = api_utils.UserAuthMechanism(
+    api_utils.UserAuthMap(
+        {
+            ('customer', 'GET'): api_utils.PermissionSpec.declare(
+                api_utils.UserStatus.anonymous
+            ),
+            # I know view_permission looks bizarre, but I want the strictness
+            #  to increase strictly for easy testing purposes
+            ('customer', None): {'tests.view_customer'},
+            ('customer_shielded', 'GET'): {'tests.view_customer'},
+            ('customer_shielded', 'POST'): {'tests.change_customer'},
+            ('customer_shielded', 'PUT'): {'tests.change_customer'},
+            ('customer_knox', 'GET'): api_utils.PermissionSpec.declare(
+                api_utils.UserStatus.staff,
+                'tests.view_customer',
+            ),
+            ('customer_knox', 'POST'): api_utils.PermissionSpec.declare(
+                api_utils.UserStatus.otp_verified, 'tests.change_customer',
+            ),
+            ('customer_knox', 'PUT'): api_utils.PermissionSpec.declare(
+                api_utils.UserStatus.otp_verified | api_utils.UserStatus.staff,
+                'tests.change_customer'
+            ),
+        }
+    )
+)
+API_AUTH = [
+    api_utils.TokenAuthMechanism(TestAPITokenGenerator), advanced_auth_map
+]
 testing_api = api_utils.API(
     name='testing_api', auth_workflow=API_AUTH, logger=api_logger
 )
@@ -160,3 +181,11 @@ class CustomerEndpoint(api_utils.APIEndpoint):
             c.lang = lang
         c.save()
         return JsonResponse({}, status=200)
+
+class ShieldedCustomerEndpoint(CustomerEndpoint):
+    api = testing_api
+    endpoint_name = 'customer_shielded'
+
+class SuperShieldedCustomerEndpoint(CustomerEndpoint):
+    api = testing_api
+    endpoint_name = 'customer_knox'

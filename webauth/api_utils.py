@@ -269,7 +269,8 @@ class UserStatus(IntFlag):
             return result
 
     def verify(self, user):
-        return bool(self & UserStatus.user_status(user))
+        user_privs = UserStatus.user_status(user)
+        return self & user_privs == self
 
 @dataclass(frozen=True)
 class PermissionSpec:
@@ -328,8 +329,6 @@ class UserAuthMap:
             self.default_perm_set = default_perm_set
 
     def can_access(self, user, endpoint: str, method: str):
-        from webauth.models import User
-        assert isinstance(user, User)
         perm_spec = self._access_dict.get((endpoint, method.casefold()))
         if perm_spec is None:
             # try with method = None as a default
@@ -347,7 +346,8 @@ class UserAuthMap:
             return False
         # type checker doesn't know about django-otp's monkeypatching
         # noinspection PyTypeChecker
-        return auth_req.verify(user) and user.has_perms(perms)
+        user_status_ok = auth_req.verify(user)
+        return user_status_ok and (not perms or user.has_perms(perms))
 
 
 class UserAuthMechanism(APIAuthMechanism):
@@ -357,31 +357,32 @@ class UserAuthMechanism(APIAuthMechanism):
         self.auth_map = auth_map
 
     def __call__(self, request, *_args, endpoint, **_kwargs):
-        from webauth import models
-        user: models.User = request.user
-        if user.is_authenticated:
-            can_access = self.auth_map.can_access(
-                request.user, endpoint.endpoint_name, request.method
+        user = request.user
+        can_access = self.auth_map.can_access(
+            request.user, endpoint.endpoint_name, request.method
+        )
+        if can_access:
+            try:
+                uid = request.session[SESSION_UID_KEY]
+            except KeyError:
+                uid = request.session[SESSION_UID_KEY] = uuid.uuid4().hex
+            name = user.username if user.is_authenticated else 'anonymous'
+            return APIAccessStatus(
+                code=APIAccessStatusCode.API_ACCESS_GRANTED,
+                term_uid=uid, term_display_name=name
             )
-            if can_access:
-                try:
-                    uid = request.session[SESSION_UID_KEY]
-                except KeyError:
-                    uid = request.session[SESSION_UID_KEY] = uuid.uuid4().hex
-                return APIAccessStatus(
-                    code=APIAccessStatusCode.API_ACCESS_GRANTED,
-                    term_uid=uid, term_display_name=user.username
-                )
-            else:
+        else:
+            # the auth map may decide to allow anonymous access for some things
+            if request.user.is_authenticated:
                 return APIAccessStatus(
                     code=APIAccessStatusCode.API_ACCESS_DENIED,
                     msg='User does not have the appropriate permissions'
                 )
-        else:
-            return APIAccessStatus(
-                code=APIAccessStatusCode.API_ACCESS_DUNNO,
-                msg='User not logged in'
-            )
+            else:
+                return APIAccessStatus(
+                    code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                    msg='User not logged in'
+                )
 
 
 API_ERROR_FIELD = 'api_error'
