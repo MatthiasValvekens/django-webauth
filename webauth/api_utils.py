@@ -6,7 +6,8 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Type, List, Dict
+from enum import IntEnum, IntFlag
+from typing import Optional, Type, List, Dict, Tuple, Set, Iterable, Union
 
 import pytz
 from django.conf import settings
@@ -21,7 +22,6 @@ from django.utils.translation import ugettext_lazy as _, ugettext_noop
 from django.views import View
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
 
-from webauth import models
 from webauth.tokens import (
     TimeBasedTokenGenerator, TimeBasedTokenValidator,
     TokenValidator,
@@ -76,27 +76,40 @@ def parse_dn(dn):
     return {k.upper(): v for k, v in pairs}
 
 
-API_ACCESS_DUNNO = 0
-API_ACCESS_GRANTED = 1
-API_ACCESS_DENIED = 2
+class APIAccessStatusCode(IntEnum):
+    API_ACCESS_DUNNO = 0
+    API_ACCESS_GRANTED = 1
+    API_ACCESS_DENIED = 2
 
 
 class APIAuthMechanism(abc.ABC):
     csrf_exempt = False
     json_name = None
 
-    def __call__(self, request, *args, **kwargs) -> 'APIAccessStatus':
+    def __call__(self, request, *args, endpoint: 'APIEndpoint', **kwargs) \
+            -> 'APIAccessStatus':
         raise NotImplementedError
 
 
 @dataclass
 class APIAccessStatus:
-    code: int
+    code: APIAccessStatusCode
     msg: str = ''
     term_display_name: str = ''
     term_uid: str = ''
     issuer: Optional[APIAuthMechanism] = None
     issuer_name: str=''
+
+
+class DummyAuthMechanism(APIAuthMechanism):
+    csrf_exempt = True
+
+    def __call__(self, request, *args, **kwargs) -> 'APIAccessStatus':
+        return APIAccessStatus(
+            code=APIAccessStatusCode.API_ACCESS_GRANTED,
+            term_uid=uuid.uuid4().hex,
+            term_display_name='dummy'
+        )
 
 
 class X509AuthMechanism(APIAuthMechanism):
@@ -121,7 +134,7 @@ class X509AuthMechanism(APIAuthMechanism):
             dn = request.META['HTTP_X_SSL_USER_DN']
         except KeyError:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO,
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
                 msg='No SSL header found'
             )
         try:
@@ -132,16 +145,17 @@ class X509AuthMechanism(APIAuthMechanism):
             for k, v in self.cert_dn_requirements.items():
                 if dn_parts[k.upper()] != v:
                     return APIAccessStatus(
-                        code=API_ACCESS_DENIED,
+                        code=APIAccessStatusCode.API_ACCESS_DENIED,
                         msg='Unauthorised X509 DN spec'
                     )
         except (KeyError, ValueError):
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='X509 spec is not properly formatted'
             )
         return APIAccessStatus(
-            code=API_ACCESS_GRANTED, term_uid=uid, term_display_name=ident
+            code=APIAccessStatusCode.API_ACCESS_GRANTED,
+            term_uid=uid, term_display_name=ident
         )
 
 
@@ -185,21 +199,23 @@ class TokenAuthMechanism(APIAuthMechanism):
         api_token = api_token or _get_raw_param(request, 'api_token')
         if api_token is None:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='No auth token supplied'
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                msg='No auth token supplied'
             )
 
         try:
             token_string = urlsafe_base64_decode(api_token).decode('utf-8')
         except (ValueError, AttributeError, TypeError):
             return APIAccessStatus(
-                code=API_ACCESS_DENIED, msg='Could not decode base64 token'
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
+                msg='Could not decode base64 token'
             )
 
         try:
             ident, uid, bare_token = token_string.split(':')
         except ValueError:
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='Improperly formatted token string'
             )
 
@@ -209,54 +225,164 @@ class TokenAuthMechanism(APIAuthMechanism):
 
         if result == TokenValidator.VALID_TOKEN:
             return APIAccessStatus(
-                code=API_ACCESS_GRANTED,
+                code=APIAccessStatusCode.API_ACCESS_GRANTED,
                 term_uid=uid, term_display_name=ident
             )
         elif result == TimeBasedTokenValidator.EXPIRED_TOKEN:
             return APIAccessStatus(
-                code=API_ACCESS_DENIED,
+                code=APIAccessStatusCode.API_ACCESS_DENIED,
                 msg='Access token expired'
             )
         else:
             return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='Invalid access token'
+                code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                msg='Invalid access token'
             )
 
 
 SESSION_UID_KEY = 'ticketing_term_uid'
 
+API_REQUIRE_OTP = object()
+
+class UserStatus(IntFlag):
+    anonymous = 0
+    authenticated = 1
+    otp_verified = 3  # user can't be verified without being authenticated
+    staff = 4
+
+    @staticmethod
+    def user_status(user):
+        if not user.is_authenticated:
+            return UserStatus.anonymous
+
+        result = UserStatus.authenticated
+        try:
+            if user.is_verified():
+                result = UserStatus.otp_verified
+        except AttributeError:
+            # django-otp not installed, or middleware not running
+            pass
+
+        if user.is_staff:
+            return result | UserStatus.staff
+        else:
+            return result
+
+    def verify(self, user):
+        user_privs = UserStatus.user_status(user)
+        return self & user_privs == self
+
+@dataclass(frozen=True)
+class PermissionSpec:
+    permissions: frozenset
+    auth_requirement: UserStatus
+
+    @staticmethod
+    def declare(auth_requirement: UserStatus, *args):
+        return PermissionSpec(
+            permissions=frozenset(args), auth_requirement=auth_requirement
+        )
+
+# an (endpoint, method) pair
+EndpointAccessSpec = Tuple[str, Optional[str]]
+FlexPermissionSpec = Union[Iterable[str], PermissionSpec]
+
+# Example of an auth map access dict:
+# {
+#    ('submit_intlpayments', None): {'lukweb.add_internalpayment'},
+#    ('submit_intldebts', None): {'lukweb.add_internaldebtitem'},
+#    ('submit_transfers', 'GET'): {
+#        'lukweb.view_internalpayment', 'lukweb.view_reservationpayment'
+#    }
+#    ('submit_transfers', 'POST'): {
+#        'lukweb.add_internalpayment', 'lukweb.add_reservationpayment'
+#    }
+#}
+
+# TODO add unit tests for UserAuthMap edge cases
+class UserAuthMap:
+
+    default_perm_set: Set[str] = None
+    default_auth_req: UserStatus = UserStatus.authenticated
+    _access_dict: Dict[EndpointAccessSpec, PermissionSpec] = None
+
+    def __init__(self, access_dict: Dict[EndpointAccessSpec, FlexPermissionSpec],
+                 default_perm_set: Union[Set[str], str]=None):
+
+        def unflex(perm_spec: FlexPermissionSpec) -> PermissionSpec:
+            if isinstance(perm_spec, PermissionSpec):
+                return perm_spec
+            else:
+                return PermissionSpec(
+                    permissions=frozenset(perm_spec),
+                    auth_requirement=self.default_auth_req
+                )
+
+        self._access_dict = {
+            (endpoint_name, method.casefold() if method is not None else None):
+                unflex(perm_set)
+            for ((endpoint_name, method), perm_set) in access_dict.items()
+        }
+        if isinstance(default_perm_set, str):
+            self.default_perm_set = {default_perm_set}
+        else:
+            self.default_perm_set = default_perm_set
+
+    def can_access(self, user, endpoint: str, method: str):
+        perm_spec = self._access_dict.get((endpoint, method.casefold()))
+        if perm_spec is None:
+            # try with method = None as a default
+            perm_spec = self._access_dict.get((endpoint, None))
+        if perm_spec is None:
+            perms = self.default_perm_set
+            auth_req = self.default_auth_req
+        else:
+            perms = perm_spec.permissions
+            auth_req = perm_spec.auth_requirement
+
+        # set default_perm_set to the empty set to allow access by default
+        #  None means "always deny on fallthrough"
+        if perms is None:
+            return False
+        # type checker doesn't know about django-otp's monkeypatching
+        # noinspection PyTypeChecker
+        user_status_ok = auth_req.verify(user)
+        return user_status_ok and (not perms or user.has_perms(perms))
+
 
 class UserAuthMechanism(APIAuthMechanism):
     json_name = 'user'
 
-    def __init__(self, default_perm_code: str, perm_dict: Dict[str, str]=None):
-        self.default_perm_code = default_perm_code
-        self.perm_dict = perm_dict or {}  # type: Dict[str, str]
+    def __init__(self, auth_map: UserAuthMap):
+        self.auth_map = auth_map
 
-    def __call__(self, request, *_args, **_kwargs):
-        user: models.User = request.user
-        if user.is_authenticated:
-            relevant_perm = self.perm_dict.get(
-                request.method, self.default_perm_code
+    def __call__(self, request, *_args, endpoint, **_kwargs):
+        user = request.user
+        can_access = self.auth_map.can_access(
+            request.user, endpoint.endpoint_name, request.method
+        )
+        if can_access:
+            try:
+                uid = request.session[SESSION_UID_KEY]
+            except KeyError:
+                uid = request.session[SESSION_UID_KEY] = uuid.uuid4().hex
+            name = user.username if user.is_authenticated else 'anonymous'
+            return APIAccessStatus(
+                code=APIAccessStatusCode.API_ACCESS_GRANTED,
+                term_uid=uid, term_display_name=name
             )
-            if user.has_perm(relevant_perm):
-                try:
-                    uid = request.session[SESSION_UID_KEY]
-                except KeyError:
-                    uid = request.session[SESSION_UID_KEY] = uuid.uuid4().hex
+        else:
+            # the auth map may decide to allow anonymous access for some things
+            if request.user.is_authenticated:
                 return APIAccessStatus(
-                    code=API_ACCESS_GRANTED,
-                    term_uid=uid, term_display_name=user.username
+                    code=APIAccessStatusCode.API_ACCESS_DENIED,
+                    msg='User does not have the appropriate permissions'
                 )
             else:
                 return APIAccessStatus(
-                    code=API_ACCESS_DENIED,
-                    msg='User does not have the appropriate permissions'
+                    code=APIAccessStatusCode.API_ACCESS_DUNNO,
+                    msg='User not logged in'
                 )
-        else:
-            return APIAccessStatus(
-                code=API_ACCESS_DUNNO, msg='User not logged in'
-            )
 
 
 API_ERROR_FIELD = 'api_error'
@@ -284,6 +410,14 @@ class API:
             for name, cls in self.endpoint_registry.items()
         ]
 
+    def register(self, endpoint_class: Type['APIEndpoint']):
+        if endpoint_class.api is not None and endpoint_class.api is not self:
+            raise TypeError(
+                'Endpoint %s is already registered to an api' % endpoint_class
+            )
+        endpoint_class.api = self
+        self.endpoint_registry[endpoint_class.endpoint_name] = endpoint_class
+
     def log(self, level, msg, *args, term_uid, term_display_name,
             auth_basis=None, endpoint: 'APIEndpoint'=None, **kwargs):
         if endpoint is None:
@@ -309,12 +443,18 @@ class APIEndpoint(View):
 
     def __init_subclass__(cls, *args, abstract=False, **kwargs):
         if not abstract:
-            if cls.api is None:
-                raise TypeError('API endpoint must set api attr')
             if cls.endpoint_name is None:
                 raise TypeError('API endpoint must set endpoint_name attr')
-            cls.api.endpoint_registry[cls.endpoint_name] = cls
+            if cls.api is not None:
+                cls.api.register(cls)
         super().__init_subclass__(*args, **kwargs)
+
+    def __init__(self):
+        if self.__class__.api is None:
+            raise TypeError('Endpoint not registered to an API')
+        self.auth_errors = {}
+        self.auth_result: Optional[APIAccessStatus] = None
+        super().__init__()
 
     def http_method_not_allowed(self, request, *args, **kwargs):
         # failure response for Method Not Allowed
@@ -326,11 +466,6 @@ class APIEndpoint(View):
             status=405
         )
 
-    def __init__(self):
-        self.auth_errors = {}
-        self.auth_result: Optional[APIAccessStatus] = None
-        super().__init__()
-
     @property
     def auth_workflow(self):
         """
@@ -340,18 +475,19 @@ class APIEndpoint(View):
 
     def auth(self, request, *args, **kwargs) -> bool:
         for auth_method in self.auth_workflow:
-            result = auth_method(request, *args, **kwargs)
+            result = auth_method(request, *args, endpoint=self, **kwargs)
             json_name = auth_method.json_name or auth_method.__class__.__name__
             result.issuer = auth_method
             result.issuer_name = json_name
-            if result.code != API_ACCESS_GRANTED:
+            if result.code != APIAccessStatusCode.API_ACCESS_GRANTED:
                 self.auth_errors[json_name] = result.msg
-            if result.code == API_ACCESS_DENIED and self.auth_fail_on_deny:
+            if result.code == APIAccessStatusCode.API_ACCESS_DENIED \
+                    and self.auth_fail_on_deny:
                 if self.gui_view:
                     raise PermissionDenied()
                 else:
                     return False
-            if result.code == API_ACCESS_GRANTED:
+            if result.code == APIAccessStatusCode.API_ACCESS_GRANTED:
                 self.auth_result = result
                 return True
         return False
@@ -389,6 +525,7 @@ class APIEndpoint(View):
         to be consumed by an API endpoint should be included in the request body.
         This helps keeping the endpoint URLs clean and consistent.
         """
+        # TODO: handle dataclasses, List args, etc. recursively
 
         if request.method.lower() in self.http_method_names:
             handler = getattr(
@@ -411,10 +548,16 @@ class APIEndpoint(View):
                 if raw_value is not None:
                     if argument_type is not inspect.Parameter.empty:
                         if argument_type is datetime.datetime:
-                            utc_ts = datetime.datetime.fromisoformat(
+                            ts = datetime.datetime.fromisoformat(
                                 str(raw_value)
                             )
-                            yield name, utc_ts.replace(tzinfo=pytz.utc)
+                            if ts.tzinfo is None:
+                                # naive datetime - treat as UTC
+                                ts = pytz.utc.localize(ts)
+                            else:
+                                # replace timezone by UTC
+                                ts = ts.astimezone(pytz.utc)
+                            yield name, ts
                         else:
                             yield name, argument_type(raw_value)
                     else:

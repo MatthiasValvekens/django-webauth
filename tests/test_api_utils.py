@@ -4,35 +4,72 @@ from datetime import datetime
 import pytz
 from django.contrib.auth.models import Permission
 from django.test import TestCase
+
 from webauth import models as webauth_models
 from . import views as test_views
 from . import models
 
+
+class DummyAuthTest(TestCase):
+
+    def setUp(self):
+        self.client.handler.enforce_csrf_checks = True
+
+    def test_dummy_auth_get(self):
+        response = self.client.get(
+            test_views.DummyAPIEndpoint.url(), data={
+                'blah': 'hi there'
+            }, content_type='application/json'
+        )
+        payload = json.loads(response.content)
+        self.assertTrue(payload['blah'] == 'hi there')
+
+    def test_dummy_auth_post(self):
+        response = self.client.post(
+            test_views.DummyAPIEndpoint.url(), data={
+                'blah': 'hi there'
+            }, content_type='application/json'
+        )
+        payload = json.loads(response.content)
+        self.assertTrue(payload['blah'] == 'hi there')
 
 # noinspection DuplicatedCode
 class CustomerTestingAPI(TestCase):
     fixtures = ['users.json']
 
     # TODO: further API token tests (expiry/malformed/...)
+    def setUp(self):
+        self.client.handler.enforce_csrf_checks = True
 
     @classmethod
     def setUpTestData(cls):
-        perm = Permission.objects.get(codename='change_customer')
-        u = webauth_models.User.objects.get(pk=1)
-        u.user_permissions.add(perm)
+        jd = webauth_models.User.objects.get(email='john.doe@example.com')
+        jd_permissions = Permission.objects.filter(
+            codename__in={'view_customer', 'change_customer'}
+        )
+        jd.user_permissions.set(jd_permissions)
+        jd.is_staff = True
+        jd.save()
+        js = webauth_models.User.objects.get(email='jane.smith@example.com')
+        js_permission = Permission.objects.get(codename='view_customer')
+        js.user_permissions.add(js_permission)
         cls.api_token = test_views.TestAPITokenGenerator(
             uid='testtesttesttesttest',
             display_name='test', lifespan=0
         ).make_base64_token()[0]
         cls.endpoint = test_views.CustomerEndpoint.url()
+        cls.endpoint_shielded = test_views.ShieldedCustomerEndpoint.url()
+        cls.endpoint_knox = test_views.SuperShieldedCustomerEndpoint.url()
+        cls.model_post_request = {
+            'api_token': cls.api_token,
+            'name': 'Test', 'email': 'aaaaaaaaa@example.com'
+        }
 
     def test_create_customer(self):
         email = 'aaaaaaaaa@example.com'
         response = self.client.post(
-            self.endpoint, data={
-                'api_token': self.api_token,
-                'name': 'Test', 'email': email
-            }, content_type='application/json'
+            self.endpoint, data=self.model_post_request,
+            content_type='application/json'
         )
         self.assertEquals(response.status_code, 201)
         self.assertTrue(models.Customer.objects.filter(email=email).exists())
@@ -40,10 +77,8 @@ class CustomerTestingAPI(TestCase):
     def test_create_customer_put(self):
         email = 'aaaaaaaaa@example.com'
         response = self.client.post(
-            self.endpoint, data={
-                'api_token': self.api_token,
-                'name': 'Test', 'email': email
-            }, content_type='application/json'
+            self.endpoint, data=self.model_post_request,
+            content_type='application/json'
         )
         self.assertEquals(response.status_code, 201)
         self.assertTrue(models.Customer.objects.filter(email=email).exists())
@@ -71,15 +106,82 @@ class CustomerTestingAPI(TestCase):
         )
         self.assertEquals(response.status_code, 403)
 
-    def test_user_auth_get(self):
-        self.client.login(username='john.doe@example.com', password='password')
+    def user_auth_tests(self, fail_at, fail_otponly=True):
+        self.client.handler.enforce_csrf_checks = False
         response = self.client.get(self.endpoint, data={})
+        # this should always succeed
+        post_request = {
+            'name': 'Test', 'email': 'aaaaaaaaa@example.com'
+        }
+        put_request = json.dumps(post_request)
         self.assertEquals(response.status_code, 200)
+        response = self.client.post(self.endpoint, data=post_request)
+        self.assertEquals(response.status_code, 403 if fail_at <= 1 else 201)
+        response = self.client.put(self.endpoint, data=put_request)
+        self.assertEquals(response.status_code, 403 if fail_at <= 2 else 200)
+        models.Customer.objects.filter(email='aaaaaaaaa@example.com').delete()
 
-    def test_user_auth_forbidden(self):
+        response = self.client.get(self.endpoint_shielded, data={})
+        self.assertEquals(response.status_code, 403 if fail_at <= 3 else 200)
+        response = self.client.post(
+            self.endpoint_shielded, data=post_request
+        )
+        self.assertEquals(response.status_code, 403 if fail_at <= 4 else 201)
+        response = self.client.put(
+            self.endpoint_shielded, data=put_request
+        )
+        self.assertEquals(response.status_code, 403 if fail_at <= 5 else 200)
+        models.Customer.objects.filter(email='aaaaaaaaa@example.com').delete()
+
+        # this one isn't strictly weaker than the next check, so
+        # it's controlled by a different flag
+        response = self.client.post(
+            self.endpoint_knox, data=post_request
+        )
+        self.assertEquals(response.status_code, 403 if fail_otponly else 201)
+        response = self.client.get(self.endpoint_knox, data={})
+        self.assertEquals(response.status_code, 403 if fail_at <= 6 else 200)
+        response = self.client.put(
+            self.endpoint_knox, data=put_request
+        )
+        self.assertEquals(response.status_code, 403 if fail_at <= 7 else 200)
+        models.Customer.objects.filter(email='aaaaaaaaa@example.com').delete()
+
+    def test_anonymous(self):
+        self.user_auth_tests(1)
+
+    def test_user_auth_viewonly(self):
         self.client.login(username='jane.smith@example.com', password='letmein')
-        response = self.client.get(self.endpoint, data={})
-        self.assertEquals(response.status_code, 403)
+        self.user_auth_tests(4)
+
+    def test_user_auth_privileged(self):
+        self.client.login(username='john.doe@example.com', password='password')
+        self.user_auth_tests(7)
+
+    def test_user_auth_otp(self):
+        from django_otp import DEVICE_ID_SESSION_KEY
+        from django_otp.plugins.otp_static.lib import add_static_token
+
+        self.client.login(username='john.doe@example.com', password='password')
+        st = add_static_token('john.doe@example.com')
+        sess = self.client.session
+        sess[DEVICE_ID_SESSION_KEY] = st.device.persistent_id
+        sess.save()
+        self.user_auth_tests(8, fail_otponly=False)
+
+    def test_user_auth_otp_nostaff(self):
+        from django_otp import DEVICE_ID_SESSION_KEY
+        from django_otp.plugins.otp_static.lib import add_static_token
+
+        self.client.login(username='john.doe@example.com', password='password')
+        st = add_static_token('john.doe@example.com')
+        sess = self.client.session
+        sess[DEVICE_ID_SESSION_KEY] = st.device.persistent_id
+        sess.save()
+        webauth_models.User.objects.filter(email='john.doe@example.com').update(
+             is_staff=False
+        )
+        self.user_auth_tests(6, fail_otponly=False)
 
     def test_unauth_user_plus_token(self):
         self.client.login(username='jane.smith@example.com', password='letmein')
@@ -87,10 +189,6 @@ class CustomerTestingAPI(TestCase):
             self.endpoint, data={'api_token': self.api_token}
         )
         self.assertEquals(response.status_code, 200)
-
-    def test_noauth(self):
-        response = self.client.get(self.endpoint, data={})
-        self.assertEquals(response.status_code, 403)
 
     def test_nonexistent_param(self):
         # should be ignored
