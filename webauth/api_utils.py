@@ -255,6 +255,7 @@ class UserStatus(IntFlag):
         if not user.is_authenticated:
             return UserStatus.anonymous
 
+        result = UserStatus.authenticated
         try:
             if user.is_verified():
                 result = UserStatus.otp_verified
@@ -262,7 +263,6 @@ class UserStatus(IntFlag):
             # django-otp not installed, or middleware not running
             pass
 
-        result = UserStatus.authenticated
         if user.is_staff:
             return result | UserStatus.staff
         else:

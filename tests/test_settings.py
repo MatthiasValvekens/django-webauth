@@ -5,6 +5,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.contenttypes',
     'django_otp',
+    'django_otp.plugins.otp_static',
     'webauth', 'tests',
 ]
 
@@ -40,8 +41,8 @@ MIDDLEWARE = [
     'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django_otp.middleware.OTPMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django_otp.middleware.OTPMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 

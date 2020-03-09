@@ -4,6 +4,7 @@ from datetime import datetime
 import pytz
 from django.contrib.auth.models import Permission
 from django.test import TestCase
+
 from webauth import models as webauth_models
 from . import views as test_views
 from . import models
@@ -132,14 +133,14 @@ class CustomerTestingAPI(TestCase):
         self.assertEquals(response.status_code, 403 if fail_at <= 5 else 200)
         models.Customer.objects.filter(email='aaaaaaaaa@example.com').delete()
 
-        response = self.client.get(self.endpoint_knox, data={})
-        self.assertEquals(response.status_code, 403 if fail_at <= 6 else 200)
-        # this one isn't strictly stricter than the previous check, so
+        # this one isn't strictly weaker than the next check, so
         # it's controlled by a different flag
         response = self.client.post(
             self.endpoint_knox, data=post_request
         )
         self.assertEquals(response.status_code, 403 if fail_otponly else 201)
+        response = self.client.get(self.endpoint_knox, data={})
+        self.assertEquals(response.status_code, 403 if fail_at <= 6 else 200)
         response = self.client.put(
             self.endpoint_knox, data=put_request
         )
@@ -157,7 +158,30 @@ class CustomerTestingAPI(TestCase):
         self.client.login(username='john.doe@example.com', password='password')
         self.user_auth_tests(7)
 
-    # TODO OTP tests
+    def test_user_auth_otp(self):
+        from django_otp import DEVICE_ID_SESSION_KEY
+        from django_otp.plugins.otp_static.lib import add_static_token
+
+        self.client.login(username='john.doe@example.com', password='password')
+        st = add_static_token('john.doe@example.com')
+        sess = self.client.session
+        sess[DEVICE_ID_SESSION_KEY] = st.device.persistent_id
+        sess.save()
+        self.user_auth_tests(8, fail_otponly=False)
+
+    def test_user_auth_otp_nostaff(self):
+        from django_otp import DEVICE_ID_SESSION_KEY
+        from django_otp.plugins.otp_static.lib import add_static_token
+
+        self.client.login(username='john.doe@example.com', password='password')
+        st = add_static_token('john.doe@example.com')
+        sess = self.client.session
+        sess[DEVICE_ID_SESSION_KEY] = st.device.persistent_id
+        sess.save()
+        webauth_models.User.objects.filter(email='john.doe@example.com').update(
+             is_staff=False
+        )
+        self.user_auth_tests(6, fail_otponly=False)
 
     def test_unauth_user_plus_token(self):
         self.client.login(username='jane.smith@example.com', password='letmein')
