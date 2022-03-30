@@ -1,3 +1,4 @@
+import decimal
 import json
 from datetime import datetime
 
@@ -32,6 +33,7 @@ class DummyAuthTest(TestCase):
         )
         payload = json.loads(response.content)
         self.assertTrue(payload['blah'] == 'hi there')
+
 
 # noinspection DuplicatedCode
 class CustomerTestingAPI(TestCase):
@@ -210,3 +212,29 @@ class CustomerTestingAPI(TestCase):
         self.assertEqual(
             response_payload['date'], dt.isoformat()
         )
+
+    def test_decimal_param_as_string(self):
+        dec = decimal.Decimal('7.01')
+        response = self.client.get(
+            self.endpoint, data={
+                'decimal_param': str(dec),
+                'api_token': self.api_token
+            }
+        )
+        response_payload = json.loads(response.content)
+        self.assertEqual(
+            response_payload['decimal_param'], str(dec)
+        )
+
+    def test_decimal_param_empty(self):
+        response = self.client.get(
+            self.endpoint, data={
+                'decimal_param': '',
+                'api_token': self.api_token
+            }
+        )
+        response_payload = json.loads(response.content)
+        self.assertEqual(
+            response_payload['decimal_param'], '0'
+        )
+

@@ -558,6 +558,13 @@ class APIEndpoint(View):
                                 # replace timezone by UTC
                                 ts = ts.astimezone(pytz.utc)
                             yield name, ts
+                        elif isinstance(argument_type, type) and \
+                                issubclass(argument_type, decimal.Decimal):
+                            dec_val = (
+                                argument_type(raw_value)
+                                if raw_value else argument_type()
+                            )
+                            yield name, dec_val
                         else:
                             yield name, argument_type(raw_value)
                     else:

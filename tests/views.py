@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import logging
 from django.http import HttpResponse, JsonResponse
 from django.views.generic.detail import SingleObjectMixin
@@ -152,7 +153,8 @@ class CustomerEndpoint(api_utils.APIEndpoint):
     api = testing_api
     endpoint_name = 'customer'
 
-    def get(self, request, *, customer_id: int=None, date_param: datetime.datetime=None):
+    def get(self, request, *, customer_id: int=None, date_param: datetime.datetime=None,
+            decimal_param: decimal.Decimal=None):
 
         qs = models.Customer.objects.filter( )
         if customer_id is not None:
@@ -160,6 +162,8 @@ class CustomerEndpoint(api_utils.APIEndpoint):
         res = { 'names': [ c.name for c in qs ] }
         if date_param is not None:
             res['date'] = date_param.isoformat()
+        if decimal_param is not None:
+            res['decimal_param'] = decimal_param
         return JsonResponse(res)
 
     def post(self, request, *, name:str, email: str, lang: str=None, error=False):
