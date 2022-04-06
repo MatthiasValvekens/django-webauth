@@ -38,6 +38,7 @@ class DummyAuthTest(TestCase):
 # noinspection DuplicatedCode
 class CustomerTestingAPI(TestCase):
     fixtures = ['users.json']
+    api_token = None
 
     # TODO: further API token tests (expiry/malformed/...)
     def setUp(self):

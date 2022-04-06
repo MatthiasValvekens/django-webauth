@@ -6,7 +6,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django_otp',
     'django_otp.plugins.otp_static',
-    'webauth', 'tests',
+    'webauth', 'webauth.tests',
 ]
 
 WEBAUTH_UNSUBSCRIBE_EMAIL = 'a@b.com'
@@ -18,7 +18,7 @@ DATABASES = {
     }
 }
 
-ROOT_URLCONF = 'tests.urls'
+ROOT_URLCONF = 'webauth.tests.urls'
 
 TEMPLATES = [{
     'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -49,8 +49,8 @@ MIDDLEWARE = [
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 AUTHENTICATION_BACKENDS = ['webauth.backends.WebauthBackend']
 # The default password hasher is too slow for unit tests
-PASSWORD_HASHERS  = [
-    'django.contrib.auth.hashers.MD5PasswordHasher'
-]
+PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 USE_TZ = True
+
+DEBUG = True

@@ -754,9 +754,8 @@ class TestDBDrivenTokens(TestCase):
             self.client.get(url)
 
     def test_bad_enforce_call(self):
-        from tests import views
         with self.assertRaises(ValueError):
-            views.SimpleTBUrlTokenGenerator.validator.enforce_token('bleh')
+            test_views.SimpleTBUrlTokenGenerator.validator.enforce_token('bleh')
 
     def test_incomplete_generator_kwargs(self):
         url = reverse(

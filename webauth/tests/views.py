@@ -153,7 +153,8 @@ class CustomerEndpoint(api_utils.APIEndpoint):
     api = testing_api
     endpoint_name = 'customer'
 
-    def get(self, request, *, customer_id: int=None, date_param: datetime.datetime=None,
+    def get(self, request, *, customer_id: int=None,
+            date_param: datetime.datetime=None,
             decimal_param: decimal.Decimal=None):
 
         qs = models.Customer.objects.filter( )
