@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.urls import reverse_lazy
 from functools import partial
 from django.contrib.auth import BACKEND_SESSION_KEY, views as auth_views
-from django.utils.translation import ugettext_lazy as _ 
+from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import SuspiciousOperation, ValidationError
 from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.utils.http import urlsafe_base64_decode
@@ -153,7 +153,7 @@ def set_language(request):
     if user.is_authenticated:
         # we can now grab the (sanitised/verified) lang code
         # from the session, since the i18n module took care of that
-        user.lang = request.session[translation.LANGUAGE_SESSION_KEY]
+        user.lang = translation.get_language_from_request(request)
         user.save()
     return response
 
