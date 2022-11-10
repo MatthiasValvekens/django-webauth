@@ -9,7 +9,7 @@ import pytz
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.http import HttpResponseGone, HttpResponseNotFound
 from django.utils.http import base36_to_int, int_to_base36
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.views import View

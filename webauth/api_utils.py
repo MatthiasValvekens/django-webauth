@@ -18,7 +18,7 @@ from django.shortcuts import render
 from django.urls import reverse, path
 from django.utils import translation
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.translation import ugettext_lazy as _, ugettext_noop
+from django.utils.translation import gettext_lazy as _, gettext_noop
 from django.views import View
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
 
@@ -576,7 +576,7 @@ class APIEndpoint(View):
                 has_default = parobj.default is not inspect.Parameter.empty
                 if not param in kwargs_to_pass and not has_default:
                     raise APIError(
-                        ugettext_noop("The parameter '%s' is required"), param
+                        gettext_noop("The parameter '%s' is required"), param
                     )
         except APIError:
             raise
@@ -584,7 +584,7 @@ class APIEndpoint(View):
             self.log(
                 logging.INFO, 'Error processing request params', exc_info=1,
             )
-            raise APIError(ugettext_noop('Could not parse arguments'))
+            raise APIError(gettext_noop('Could not parse arguments'))
 
         return handler, kwargs_to_pass
 

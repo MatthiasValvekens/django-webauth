@@ -54,3 +54,7 @@ PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 USE_TZ = True
 
 DEBUG = True
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+PASSWORD_RESET_TIMEOUT_DAYS = 1
